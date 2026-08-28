@@ -1,0 +1,48 @@
+# keel.yaml — Keel deployment configuration
+# Reference: docs/keel-yaml.md in the Keel repository.
+version: 1
+
+deployments:
+  # Each top-level key under `deployments:` is one deployment, the way a
+  # compose file has services. Rename "production" to whatever fits.
+  production:
+    description: |
+      Deploy this project to production.
+      Describe here what this deployment does — the description is shown in
+      the Keel UI and in generated variable manifests.
+
+    # The environment is the container the deployment steps run in. Put every
+    # CLI and tool the steps need into this Dockerfile (cloud CLIs, terraform,
+    # kubectl, ...). A deployment can point at its own Dockerfile, or several
+    # deployments can share one.
+    environment:
+      dockerfile: deploy/Dockerfile
+      context: .
+
+    # Steps run in order inside the environment, with the repository mounted
+    # at /workspace and every variable exported as an environment variable.
+    # A step that fails (non-zero exit) stops the run.
+    steps:
+      - name: Show environment
+        run: |
+          echo "Deploying $KEEL_DEPLOYMENT to target $KEEL_TARGET"
+          echo "Greeting: $GREETING"
+      - name: Deploy
+        run: |
+          echo "Put your real deployment commands here."
+
+    # Variables are the inputs a deployment target must provide — the same
+    # idea as terraform variables. Each one becomes an environment variable
+    # inside the run. The form shown in Keel Dev and Keel Cloud is rendered
+    # from these definitions.
+    variables:
+      GREETING:
+        label: Greeting
+        type: text
+        required: true
+        default: hello
+        description: An example variable. Replace it with your real inputs.
+        manifest:
+          include: true
+          why: Demonstrates how a variable appears in a generated manifest.
+          how: Any short text works. Delete this variable once you add real ones.

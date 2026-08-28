@@ -1,0 +1,61 @@
+{{define "content"}}
+<div class="mx-auto w-full max-w-2xl space-y-6">
+  <div>
+    <a href="{{.Repo.URL}}" class="text-sm text-slate-500 hover:text-slate-700">← {{.Repo.Name}}</a>
+    <h1 class="mt-2 text-xl font-semibold tracking-tight text-slate-900">Repository settings</h1>
+  </div>
+
+  <form method="post" action="{{.Repo.URL}}/settings" class="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    {{template "csrf_field" .CSRF}}
+    <div>
+      <label for="name" class="block text-sm font-medium text-slate-900">Display name</label>
+      <input type="text" id="name" name="name" value="{{.Repo.Name}}" required
+        class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+    </div>
+    <div>
+      <label for="branch" class="block text-sm font-medium text-slate-900">Branch</label>
+      <input type="text" id="branch" name="branch" value="{{.Repo.Branch}}" required
+        class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+      <p class="mt-1 text-xs text-slate-400">The branch Keel reads keel.yaml from and deploys.</p>
+    </div>
+    {{if eq .Repo.Provider "git"}}
+    <div>
+      <label for="git_url" class="block text-sm font-medium text-slate-900">Repository URL</label>
+      <input type="url" id="git_url" name="git_url" value="{{.Repo.GitURL}}" required
+        class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+    </div>
+    <div>
+      <label for="token" class="block text-sm font-medium text-slate-900">Access token</label>
+      <input type="password" id="token" name="token" autocomplete="off"
+        placeholder="{{if .HasToken}}•••••••• (saved — leave blank to keep){{else}}token with read access{{end}}"
+        class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+      {{if .HasToken}}
+      <label class="mt-2 flex items-center gap-2 text-sm text-slate-600">
+        <input type="checkbox" name="clear_token" value="true" class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500">
+        Remove the saved token (repository is public)
+      </label>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-500">Connected through the GitHub App as <span class="font-medium text-slate-700">{{.Repo.GithubFullName}}</span> — authentication is managed automatically.</p>
+    {{end}}
+    <div class="pt-1">
+      <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Save and re-sync</button>
+    </div>
+  </form>
+
+  <div class="rounded-lg border border-red-200 bg-white p-6">
+    <h2 class="text-sm font-semibold text-red-800">Disconnect repository</h2>
+    <p class="mt-1 text-sm text-slate-500">Removes the repository, its deployment targets, saved variables, and run history from Keel Cloud. The repository itself is untouched.</p>
+    <form method="post" action="{{.DeleteURL}}" class="mt-4 flex flex-wrap items-end gap-3" onsubmit="return confirm('Disconnect this repository? This cannot be undone.')">
+      {{template "csrf_field" .CSRF}}
+      <div>
+        <label for="confirm_name" class="block text-xs font-medium text-slate-500">Type <span class="font-mono">{{.Repo.Name}}</span> to confirm</label>
+        <input type="text" id="confirm_name" name="confirm_name" required autocomplete="off"
+          class="mt-1.5 block rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500">
+      </div>
+      <button type="submit" class="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Disconnect</button>
+    </form>
+  </div>
+</div>
+{{end}}

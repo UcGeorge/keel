@@ -1,0 +1,57 @@
+{{/* run_meta renders the run status header and step list. It is the
+     fragment re-sent over SSE while a run is live.
+     Context: dict with:
+       Run       web.RunVM
+       Steps     []web.StepVM
+       CanCancel bool
+       CSRF      string
+*/}}
+{{define "run_meta"}}
+{{$run := .Run}}
+<div class="rounded-lg border border-slate-200 bg-white">
+  <div class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-slate-100 px-5 py-4">
+    <span class="{{statusbadge $run.Status}}"><span class="h-1.5 w-1.5 rounded-full {{statusdot $run.Status}}"></span>{{$run.Status}}</span>
+    <div class="text-sm text-slate-500">
+      <span class="font-medium text-slate-800">{{$run.Deployment}}</span>
+      <span class="text-slate-400">/</span>
+      <span>{{$run.TargetName}}</span>
+      {{with $run.CommitSHA}} · <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">{{shortsha .}}</code>{{end}}
+    </div>
+    <div class="ml-auto flex items-center gap-4 text-sm text-slate-500">
+      {{if $run.StartedAt}}<span>{{duration $run.Duration}}</span>{{end}}
+      {{if and .CanCancel $run.Active}}
+      <form method="post" action="{{$run.CancelURL}}" onsubmit="return confirm('Cancel this run?')">
+        {{template "csrf_field" .CSRF}}
+        <button type="submit" class="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">Cancel run</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+
+  {{with $run.Error}}
+  <div class="border-b border-slate-100 bg-red-50 px-5 py-3 text-sm text-red-800">{{.}}</div>
+  {{end}}
+
+  <ol class="divide-y divide-slate-100">
+    {{range .Steps}}
+    <li class="flex items-center gap-3 px-5 py-3">
+      <span class="flex h-5 w-5 items-center justify-center">
+        {{if eq .Status "succeeded"}}
+        <svg class="h-5 w-5 text-emerald-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.86-9.4a.75.75 0 1 0-1.22-.87l-2.96 4.15-1.4-1.4a.75.75 0 1 0-1.06 1.06l2 2a.75.75 0 0 0 1.14-.09l3.5-4.85Z" clip-rule="evenodd"/></svg>
+        {{else if eq .Status "failed"}}
+        <svg class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd"/></svg>
+        {{else if eq .Status "running"}}
+        <svg class="h-4 w-4 animate-spin text-sky-500" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z"/></svg>
+        {{else if eq .Status "skipped"}}
+        <svg class="h-5 w-5 text-slate-300" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" opacity="0"/><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm-3-8.75a.75.75 0 0 0 0 1.5h6a.75.75 0 0 0 0-1.5H7Z" clip-rule="evenodd"/></svg>
+        {{else}}
+        <span class="h-2 w-2 rounded-full bg-slate-300"></span>
+        {{end}}
+      </span>
+      <span class="text-sm {{if eq .Status "skipped"}}text-slate-400{{else}}text-slate-800{{end}}">{{.Name}}</span>
+      <span class="ml-auto text-xs uppercase tracking-wide text-slate-400">{{.Status}}</span>
+    </li>
+    {{end}}
+  </ol>
+</div>
+{{end}}

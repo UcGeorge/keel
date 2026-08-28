@@ -1,0 +1,150 @@
+/* Tailwind v4 entry point. Compiled to static/css/app.css by `make css`. */
+@import "tailwindcss";
+
+@source "./templates";
+@source "../devserver";
+@source "../cloudserver";
+
+/* The status helpers in funcs.go emit class names at runtime; keep them. */
+@source inline("bg-emerald-500 bg-red-500 bg-sky-500 bg-amber-400 bg-slate-400 bg-slate-300 animate-pulse");
+@source inline("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1");
+@source inline("bg-emerald-50 text-emerald-700 ring-emerald-600/20 bg-red-50 text-red-700 ring-red-600/20");
+@source inline("bg-sky-50 text-sky-700 ring-sky-600/20 bg-amber-50 text-amber-700 ring-amber-600/20");
+@source inline("bg-slate-100 text-slate-600 ring-slate-500/20");
+
+/* Explicit dark styling (used sparingly — most theming is the palette flip
+   below) targets the .dark class the layout sets on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Fixed surfaces that stay dark in BOTH themes (header, terminals, code
+     panels) and the light text that sits on them. Never overridden by the
+     dark palette flip below. */
+  --color-ink: #0f172a;
+  --color-ink-soft: #1e293b;
+  --color-ink-deep: #020617;
+  --color-fog: #e2e8f0;
+  --color-fog-dim: #94a3b8;
+  --color-paper: #ffffff;
+}
+
+/* Dark mode.
+   Templates are written against the light palette; dark mode re-points the
+   palette variables instead of sprinkling dark: variants over every class.
+   Neutrals get a hand-tuned dark ramp (page darker than cards, readable
+   text); accent ramps are mirrored around their midpoint so tinted badges,
+   banners, and links keep their roles. Deliberately-dark elements use the
+   fixed ink/fog tokens above and are unaffected. */
+.dark {
+  color-scheme: dark;
+
+  /* Neutrals. --color-white is the card surface. */
+  --color-white: #101a2e;
+  --color-slate-50: #0a1122;
+  --color-slate-100: #1b2740;
+  --color-slate-200: #263450;
+  --color-slate-300: #35476b;
+  --color-slate-400: #64779c;
+  --color-slate-500: #8b9cbe;
+  --color-slate-600: #a9b8d6;
+  --color-slate-700: #c5d1e8;
+  --color-slate-800: #dde5f4;
+  --color-slate-900: #eef2fb;
+  --color-slate-950: #f8fafc;
+
+  /* Brand. 600 stays a filled-button color (brightened for dark text),
+     700/800 are link colors and hover states. */
+  --color-teal-50: #0d3331;
+  --color-teal-100: #134e4a;
+  --color-teal-200: #115e59;
+  --color-teal-300: #0f766e;
+  --color-teal-600: #14b8a6;
+  --color-teal-700: #2dd4bf;
+  --color-teal-800: #5eead4;
+
+  /* Accents: 50–300 become deep tints, 700–900 become light text. */
+  --color-emerald-50: #05291e;
+  --color-emerald-100: #064e3b;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #047857;
+  --color-emerald-700: #34d399;
+  --color-emerald-800: #6ee7b9;
+  --color-emerald-900: #a7f3d0;
+
+  --color-red-50: #390d0d;
+  --color-red-100: #7f1d1d;
+  --color-red-200: #7f1d1d;
+  --color-red-300: #b91c1c;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+
+  --color-sky-50: #082f49;
+  --color-sky-100: #0c4a6e;
+  --color-sky-200: #075985;
+  --color-sky-300: #0369a1;
+  --color-sky-700: #38bdf8;
+  --color-sky-800: #7dd3fc;
+
+  --color-amber-50: #38260a;
+  --color-amber-100: #78350f;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-700: #fbbf24;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+
+  --color-violet-50: #2e1065;
+  --color-violet-100: #4c1d95;
+  --color-violet-200: #5b21b6;
+  --color-violet-300: #6d28d9;
+  --color-violet-700: #a78bfa;
+  --color-violet-800: #c4b5fd;
+}
+
+/* Rendered markdown (variable descriptions, manifest preview). */
+.prose-sm :where(p) { margin: 0.25rem 0; }
+.prose-sm :where(a) { color: var(--color-teal-700); text-decoration: underline; }
+.prose-sm :where(code) { background: var(--color-slate-100); border-radius: 0.25rem; padding: 0 0.25rem; font-size: 0.85em; }
+.prose-sm :where(ul, ol) { margin: 0.25rem 0 0.25rem 1.25rem; list-style: disc; }
+.prose-sm :where(ol) { list-style: decimal; }
+
+/* Rendered markdown for a deployment's long description. */
+.prose-doc { line-height: 1.65; }
+.prose-doc :where(p) { margin: 0.5rem 0; }
+.prose-doc :where(a) { color: var(--color-teal-700); text-decoration: underline; }
+.prose-doc :where(code) { background: var(--color-slate-100); border-radius: 0.25rem; padding: 0.1rem 0.3rem; font-size: 0.85em; }
+.prose-doc :where(pre) { background: var(--color-ink-deep); color: var(--color-fog); border-radius: 0.5rem; padding: 0.6rem 0.8rem; margin: 0.6rem 0; overflow-x: auto; font-size: 0.8rem; line-height: 1.6; }
+.prose-doc :where(pre code) { background: none; padding: 0; font-size: inherit; }
+.prose-doc :where(ul, ol) { margin: 0.5rem 0 0.5rem 1.25rem; list-style: disc; }
+.prose-doc :where(ol) { list-style: decimal; }
+.prose-doc :where(h1, h2, h3, h4) { color: var(--color-slate-900); font-weight: 600; margin: 1.25rem 0 0.4rem; }
+.prose-doc :where(h1) { font-size: 1.15rem; }
+.prose-doc :where(h2) { font-size: 1.05rem; }
+.prose-doc :where(h3, h4) { font-size: 0.95rem; }
+.prose-doc :where(h1:first-child, h2:first-child, p:first-child) { margin-top: 0; }
+.prose-doc :where(blockquote) { border-left: 3px solid var(--color-slate-200); padding-left: 0.75rem; color: var(--color-slate-500); margin: 0.6rem 0; }
+.prose-doc :where(table) { border-collapse: collapse; margin: 0.75rem 0; font-size: 0.85rem; }
+.prose-doc :where(th, td) { border: 1px solid var(--color-slate-200); padding: 0.35rem 0.6rem; text-align: left; }
+.prose-doc :where(th) { background: var(--color-slate-50); font-weight: 600; }
+.prose-doc :where(strong) { color: var(--color-slate-900); }
+.prose-doc :where(hr) { border: 0; border-top: 1px solid var(--color-slate-200); margin: 1rem 0; }
+
+/* The manifest preview document. */
+.manifest-doc { max-width: 46rem; color: var(--color-slate-700); font-size: 0.9rem; line-height: 1.65; }
+.manifest-doc h1 { font-size: 1.35rem; font-weight: 700; color: var(--color-slate-900); margin-bottom: 0.75rem; letter-spacing: -0.01em; }
+.manifest-doc h2 { font-size: 1.05rem; font-weight: 600; color: var(--color-slate-900); margin: 1.75rem 0 0.5rem; }
+.manifest-doc p { margin: 0.5rem 0; }
+.manifest-doc a { color: var(--color-teal-700); text-decoration: underline; }
+.manifest-doc code { background: var(--color-slate-100); border-radius: 0.25rem; padding: 0.1rem 0.3rem; font-size: 0.85em; }
+.manifest-doc table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.85rem; }
+.manifest-doc th, .manifest-doc td { border: 1px solid var(--color-slate-200); padding: 0.4rem 0.6rem; text-align: left; }
+.manifest-doc th { background: var(--color-slate-50); font-weight: 600; }
+.manifest-doc ul { margin: 0.5rem 0 0.5rem 1.25rem; list-style: disc; }
+.manifest-doc hr { border: 0; border-top: 1px solid var(--color-slate-200); margin: 1.5rem 0; }
+.manifest-doc strong { color: var(--color-slate-900); }
+.manifest-doc em { color: var(--color-slate-500); }

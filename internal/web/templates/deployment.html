@@ -1,0 +1,126 @@
+{{define "content"}}
+<div class="space-y-8">
+  <div>
+    <a href="{{.BackURL}}" class="text-sm text-slate-500 hover:text-slate-700">← {{.BackLabel}}</a>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <h1 class="text-xl font-semibold tracking-tight text-slate-900">{{.Dep.Name}}</h1>
+      <code class="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{{.Dep.Dockerfile}}</code>
+    </div>
+    {{with .Dep.Description}}<p class="mt-2 max-w-2xl text-sm text-slate-600">{{.}}</p>{{end}}
+    {{with .Dep.LongDescription}}<div class="prose-doc mt-3 max-w-2xl text-sm text-slate-600">{{markdown .}}</div>{{end}}
+  </div>
+
+  <section>
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-semibold text-slate-900">Targets</h2>
+    </div>
+    <p class="mt-1 text-sm text-slate-500">A target is one concrete place this deployment goes — a client, an environment, a region. Each target keeps its own variable values.</p>
+
+    <div class="mt-4">
+      {{if .Dep.Targets}}
+      <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50">
+            <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <th class="px-4 py-2.5">Target</th>
+              <th class="px-4 py-2.5">Variables</th>
+              <th class="px-4 py-2.5">Last run</th>
+              {{if .ShowAuto}}<th class="px-4 py-2.5">Auto deploy</th>{{end}}
+              <th class="px-4 py-2.5"><span class="sr-only">Open</span></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            {{range .Dep.Targets}}
+            <tr class="hover:bg-slate-50">
+              <td class="px-4 py-3">
+                <a href="{{.URL}}" class="font-medium text-slate-900 hover:text-teal-700">{{.Name}}</a>
+                {{with .Description}}<p class="mt-0.5 text-xs text-slate-500">{{truncate 80 .}}</p>{{end}}
+              </td>
+              <td class="px-4 py-3">
+                {{if .Ready}}
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-600/20"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Ready to deploy</span>
+                {{else}}
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-600/20"><span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>Needs {{.Missing}} value{{if ne .Missing 1}}s{{end}}</span>
+                {{end}}
+                {{if .VarsTotal}}<span class="ml-2 text-xs text-slate-400">{{.VarsSet}}/{{.VarsTotal}} set</span>{{end}}
+              </td>
+              <td class="px-4 py-3">
+                {{with .LastRun}}
+                <a href="{{.URL}}" class="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900">
+                  <span class="h-1.5 w-1.5 rounded-full {{statusdot .Status}}"></span>{{.Status}} · {{timeago .CreatedAt}}
+                </a>
+                {{else}}<span class="text-sm text-slate-400">never</span>{{end}}
+              </td>
+              {{if $.ShowAuto}}
+              <td class="px-4 py-3 text-sm text-slate-500">{{if .AutoDeploy}}<span class="text-teal-700">on push</span>{{else}}manual{{end}}</td>
+              {{end}}
+              <td class="px-4 py-3 text-right"><a href="{{.URL}}" class="font-medium text-teal-700 hover:text-teal-800">Open →</a></td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+      {{template "empty_state" dict "Title" "No targets yet" "Hint" "Create a target below to configure variables and deploy."}}
+      {{end}}
+    </div>
+
+    {{if .CanConfigure}}
+    <div class="mt-6 rounded-lg border border-slate-200 bg-white p-5">
+      <h3 class="text-sm font-semibold text-slate-900">New target</h3>
+      <div class="mt-4">{{template "target_form" dict "Form" .TargetForm "CSRF" .CSRF}}</div>
+    </div>
+    {{end}}
+  </section>
+
+  <section class="grid gap-6 lg:grid-cols-2">
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <h2 class="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-900">Steps</h2>
+      <ol class="divide-y divide-slate-100">
+        {{range $i, $s := .Dep.Steps}}
+        <li class="px-5 py-3">
+          <div class="flex items-center gap-2.5">
+            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">{{add $i 1}}</span>
+            <span class="text-sm font-medium text-slate-800">{{$s.Name}}</span>
+          </div>
+          <pre class="mt-2 overflow-x-auto rounded-md bg-ink-deep px-3 py-2 text-xs leading-relaxed text-fog">{{$s.Run}}</pre>
+        </li>
+        {{end}}
+      </ol>
+    </div>
+
+    <div class="rounded-lg border border-slate-200 bg-white">
+      <h2 class="border-b border-slate-100 px-5 py-3 text-sm font-semibold text-slate-900">Variables</h2>
+      {{if .Dep.Variables}}
+      <ul class="divide-y divide-slate-100">
+        {{range .Dep.Variables}}
+        <li class="flex flex-wrap items-center gap-2 px-5 py-3">
+          <code class="text-xs font-semibold text-slate-800">{{.Name}}</code>
+          <span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{{typelabel .Type}}</span>
+          {{if .Secret}}<span class="rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">secret</span>{{end}}
+          {{if .DeployTime}}<span class="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700" title="Asked for every time a deploy starts">deploy-time</span>{{end}}
+          {{with .When}}<span class="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" title="Only active while this condition holds">when {{.Describe}}</span>{{end}}
+          {{if not .Required}}<span class="text-[11px] text-slate-400">optional</span>{{end}}
+          {{if .Manifest.Include}}<span class="ml-auto text-[11px] text-slate-400" title="Included in the variable manifest">in manifest</span>{{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="px-5 py-4 text-sm text-slate-500">This deployment declares no variables.</p>
+      {{end}}
+      {{if .Dep.Outputs}}
+      <h2 class="border-y border-slate-100 bg-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-900">Outputs</h2>
+      <ul class="divide-y divide-slate-100">
+        {{range .Dep.Outputs}}
+        <li class="flex flex-wrap items-center gap-2 px-5 py-3">
+          <code class="text-xs font-semibold text-slate-800">{{.Name}}</code>
+          {{if .Secret}}<span class="rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">secret</span>{{end}}
+          {{with .Description}}<span class="text-[11px] text-slate-400">{{truncate 60 .}}</span>{{end}}
+        </li>
+        {{end}}
+      </ul>
+      {{end}}
+    </div>
+  </section>
+</div>
+{{end}}

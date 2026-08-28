@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="mx-auto w-full max-w-2xl space-y-6">
+  <h1 class="text-xl font-semibold tracking-tight text-slate-900">Organization settings</h1>
+
+  {{with .Error}}<div class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{.}}</div>{{end}}
+
+  <form method="post" action="{{.OrgSlug | printf "/orgs/%s"}}/settings" class="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    {{template "csrf_field" .CSRF}}
+    <div>
+      <label for="name" class="block text-sm font-medium text-slate-900">Organization name</label>
+      <input type="text" id="name" name="name" value="{{.OrgName}}" required
+        class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+      <p class="mt-1 text-xs text-slate-400">The URL slug (/orgs/{{.OrgSlug}}) does not change when renaming.</p>
+    </div>
+    <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Save</button>
+  </form>
+
+  {{if not .Personal}}
+  <div class="rounded-lg border border-red-200 bg-white p-6">
+    <h2 class="text-sm font-semibold text-red-800">Delete organization</h2>
+    <p class="mt-1 text-sm text-slate-500">Deletes the organization with every connected repository, target, saved variable, and run. This cannot be undone.</p>
+    <form method="post" action="{{.OrgSlug | printf "/orgs/%s"}}/delete" class="mt-4 flex flex-wrap items-end gap-3" onsubmit="return confirm('Delete this organization? This cannot be undone.')">
+      {{template "csrf_field" .CSRF}}
+      <div>
+        <label for="confirm_name" class="block text-xs font-medium text-slate-500">Type <span class="font-mono">{{.OrgName}}</span> to confirm</label>
+        <input type="text" id="confirm_name" name="confirm_name" required autocomplete="off"
+          class="mt-1.5 block rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500">
+      </div>
+      <button type="submit" class="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50">Delete organization</button>
+    </form>
+  </div>
+  {{else}}
+  <p class="text-sm text-slate-400">Personal organizations cannot be deleted.</p>
+  {{end}}
+</div>
+{{end}}

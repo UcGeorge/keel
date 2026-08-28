@@ -1,0 +1,7 @@
+# Managed by Keel. Everything in .keel is machine-local state (dev.db, …),
+# except the vendored CLI binaries under bin/, which are meant to be
+# committed so the whole team can run `make keel-*` without the Keel source.
+*
+!.gitignore
+!bin
+!bin/**

@@ -1,0 +1,21 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold tracking-tight text-slate-900">Deployments</h1>
+      <p class="mt-1 text-sm text-slate-500">Defined in <code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{{.ConfigPath}}</code></p>
+    </div>
+    <a href="/config" class="text-sm font-medium text-teal-700 hover:text-teal-800">View configuration →</a>
+  </div>
+
+  {{template "config_errors" .Config}}
+
+  {{if .Deployments}}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {{range .Deployments}}{{template "deployment_card" .}}{{end}}
+  </div>
+  {{else if .Config.OK}}
+  {{template "empty_state" dict "Title" "No deployments defined" "Hint" "Add entries under deployments: in keel.yaml to see them here."}}
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,96 @@
+# Example: one project deployable to AWS and GCP, each with its own
+# environment image. Copy pieces of this into your own keel.yaml.
+version: 1
+
+deployments:
+  aws-production:
+    description: |
+      Deploys the API to **AWS ECS** in the client's account.
+      Requires an IAM user with the `keel-deploy` policy attached.
+    environment:
+      dockerfile: deploy/aws.Dockerfile
+    steps:
+      - name: Configure AWS credentials
+        run: |
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+          aws configure set region "$AWS_REGION"
+          aws sts get-caller-identity
+      - name: Build and push image
+        run: ./deploy/aws/push-image.sh
+      - name: Update service
+        run: ./deploy/aws/update-service.sh
+    variables:
+      AWS_ACCESS_KEY_ID:
+        label: AWS Access Key ID
+        secret: true
+        validation:
+          pattern: "AKIA[0-9A-Z]{16}"
+          message: Must look like AKIAXXXXXXXXXXXXXXXX
+        manifest:
+          why: Authenticates the deployment with your AWS account.
+          how: |
+            In the AWS console: **IAM → Users → Add user**, enable
+            *programmatic access*, attach the `keel-deploy` policy we
+            provided, and copy the access key ID.
+      AWS_SECRET_ACCESS_KEY:
+        label: AWS Secret Access Key
+        secret: true
+        manifest:
+          why: The second half of the AWS credential pair.
+          how: Shown once when the access key is created — store it safely.
+      AWS_REGION:
+        label: Region
+        type: select
+        default: us-east-1
+        options:
+          - {value: us-east-1, label: US East (N. Virginia)}
+          - {value: eu-west-1, label: Europe (Ireland)}
+          - {value: ap-southeast-1, label: Asia Pacific (Singapore)}
+      DESIRED_COUNT:
+        label: Service replicas
+        type: number
+        required: false
+        default: "2"
+        validation: {min: 1, max: 20}
+      NOTIFY_EMAIL:
+        label: Notification email
+        type: email
+        required: false
+        description: Deployment reports are sent here after every run.
+
+  gcp-production:
+    description: Deploys the API to **Google Cloud Run**.
+    environment:
+      dockerfile: deploy/gcp.Dockerfile
+    steps:
+      - name: Authenticate service account
+        run: |
+          printf '%s' "$GCP_SERVICE_ACCOUNT_KEY" > /tmp/sa.json
+          gcloud auth activate-service-account --key-file=/tmp/sa.json
+          gcloud config set project "$GCP_PROJECT_ID"
+      - name: Deploy to Cloud Run
+        run: ./deploy/gcp/deploy.sh
+    variables:
+      GCP_PROJECT_ID:
+        label: GCP Project ID
+        validation:
+          pattern: "[a-z][a-z0-9-]{4,28}[a-z0-9]"
+          message: Lowercase project id, e.g. acme-prod-123456
+        manifest:
+          why: The project the service is deployed into.
+          how: Google Cloud console → project picker → copy the *ID* (not the name).
+      GCP_SERVICE_ACCOUNT_KEY:
+        label: Service account key (JSON)
+        type: multiline
+        secret: true
+        manifest:
+          why: Authenticates the deployment with your GCP project.
+          how: |
+            **IAM & Admin → Service accounts** → create `keel-deploy` with
+            the *Cloud Run Admin* and *Service Account User* roles → Keys →
+            **Add key → JSON**. Paste the whole file.
+      PUBLIC_INGRESS:
+        label: Allow public traffic
+        type: boolean
+        required: false

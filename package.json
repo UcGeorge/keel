@@ -1,0 +1,11 @@
+{
+  "name": "keel-assets",
+  "private": true,
+  "scripts": {
+    "css": "tailwindcss -i internal/web/tailwind.css -o internal/web/static/css/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}

@@ -1,0 +1,19 @@
+# Binaries
+/bin/
+/dist/
+
+# Local Keel state (created by `keel dev`)
+
+# Node (used only to compile Tailwind CSS)
+node_modules/
+
+# OS noise
+.DS_Store
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Other
+status*.txt

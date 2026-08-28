@@ -1,0 +1,19 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold tracking-tight text-slate-900">Configuration</h1>
+      <p class="mt-1 text-sm text-slate-500"><code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{{.Path}}</code> — re-read on every page load; edit the file and refresh.</p>
+    </div>
+    {{if .Config.OK}}
+    <span class="{{statusbadge "ok"}}"><span class="h-1.5 w-1.5 rounded-full {{statusdot "ok"}}"></span>valid</span>
+    {{end}}
+  </div>
+
+  {{template "config_errors" .Config}}
+
+  <div class="overflow-hidden rounded-lg border border-ink-soft">
+    <pre class="overflow-x-auto bg-ink-deep px-5 py-4 font-mono text-[13px] leading-relaxed text-fog">{{.RawYAML}}</pre>
+  </div>
+</div>
+{{end}}

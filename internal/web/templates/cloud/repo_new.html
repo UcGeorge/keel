@@ -1,0 +1,89 @@
+{{define "content"}}
+<div class="mx-auto w-full max-w-2xl space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold tracking-tight text-slate-900">Connect a repository</h1>
+    <p class="mt-1 text-sm text-slate-500">Keel reads <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">keel.yaml</code> from the branch you pick and keeps it in sync.</p>
+  </div>
+
+  {{if .GithubEnabled}}
+  <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <div class="flex items-center gap-2">
+      <svg class="h-5 w-5 text-slate-700" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      <h2 class="text-sm font-semibold text-slate-900">From GitHub</h2>
+    </div>
+    {{with .GithubError}}<div class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">{{.}}</div>{{end}}
+    {{if .GithubRepos}}
+    <form method="post" action="{{.FormAction}}" class="mt-4 space-y-4">
+      {{template "csrf_field" .CSRF}}
+      <input type="hidden" name="provider" value="github_app">
+      <div>
+        <label for="github_repo" class="block text-sm font-medium text-slate-900">Repository</label>
+        <select id="github_repo" name="github_repo" required
+          class="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+          <option value="">— pick a repository —</option>
+          {{range .GithubRepos}}<option value="{{.InstallationID}}|{{.FullName}}">{{.FullName}}</option>{{end}}
+        </select>
+        {{with .Errors.github}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="gh-branch" class="block text-sm font-medium text-slate-900">Branch</label>
+          <input type="text" id="gh-branch" name="branch" value="{{.Branch}}"
+            class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        </div>
+        <div>
+          <label for="gh-name" class="block text-sm font-medium text-slate-900">Display name <span class="font-normal text-slate-400">(optional)</span></label>
+          <input type="text" id="gh-name" name="name" placeholder="defaults to the repo name"
+            class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        </div>
+      </div>
+      <button type="submit" class="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">Connect from GitHub</button>
+    </form>
+    {{else}}
+    <p class="mt-3 text-sm text-slate-500">No GitHub installations yet. <a href="{{.InstallURL}}" class="font-medium text-teal-700 hover:text-teal-800" target="_blank" rel="noopener">Install the Keel GitHub App →</a> then come back here.</p>
+    {{end}}
+  </div>
+
+  <div class="relative">
+    <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+    <div class="relative flex justify-center"><span class="bg-slate-50 px-3 text-xs uppercase tracking-wide text-slate-400">or any git host</span></div>
+  </div>
+  {{end}}
+
+  <div class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    <h2 class="text-sm font-semibold text-slate-900">From a git URL</h2>
+    <p class="mt-1 text-xs text-slate-500">Works with GitHub, GitLab, Bitbucket, Gitea — any host that serves git over HTTPS.</p>
+    <form method="post" action="{{.FormAction}}" class="mt-4 space-y-4">
+      {{template "csrf_field" .CSRF}}
+      <input type="hidden" name="provider" value="git">
+      <div>
+        <label for="git_url" class="block text-sm font-medium text-slate-900">Repository URL</label>
+        <input type="url" id="git_url" name="git_url" value="{{.GitURL}}" placeholder="https://github.com/acme/api.git" required
+          class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        {{with .Errors.git_url}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="branch" class="block text-sm font-medium text-slate-900">Branch</label>
+          <input type="text" id="branch" name="branch" value="{{.Branch}}"
+            class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        </div>
+        <div>
+          <label for="name" class="block text-sm font-medium text-slate-900">Display name <span class="font-normal text-slate-400">(optional)</span></label>
+          <input type="text" id="name" name="name" value="{{.Name}}" placeholder="defaults to the repo name"
+            class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+          {{with .Errors.name}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
+        </div>
+      </div>
+      <div>
+        <label for="token" class="block text-sm font-medium text-slate-900">Access token <span class="font-normal text-slate-400">(for private repositories)</span></label>
+        <input type="password" id="token" name="token" autocomplete="off"
+          placeholder="a fine-grained token with read access to the repository"
+          class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        <p class="mt-1 text-xs text-slate-400">Stored encrypted, used only to clone.</p>
+      </div>
+      <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Connect repository</button>
+    </form>
+  </div>
+</div>
+{{end}}

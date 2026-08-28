@@ -1,0 +1,50 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <a href="{{.BackURL}}" class="text-sm text-slate-500 hover:text-slate-700">← Back</a>
+    <h1 class="mt-2 text-xl font-semibold tracking-tight text-slate-900">Variable manifest</h1>
+    <p class="mt-1 max-w-2xl text-sm text-slate-500">
+      Generate a document for whoever must provide the values this deployment needs — a client, a third party, another team.
+      Each entry explains what the value is, why it is needed, and how to obtain it, exactly as written in <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">keel.yaml</code>.
+    </p>
+  </div>
+
+  {{with .Error}}
+  <div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">{{.}}</div>
+  {{end}}
+
+  <div class="grid gap-6 lg:grid-cols-[20rem_1fr]">
+    <form method="get" action="{{.FormAction}}" class="h-fit rounded-lg border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-semibold text-slate-900">Include variables</h2>
+      <p class="mt-1 text-xs text-slate-500">Pre-selected from each variable's <code>manifest:</code> block.</p>
+      <div class="mt-4 space-y-2.5">
+        {{$sel := .Selected}}
+        {{range .Dep.Variables}}
+        <label class="flex items-start gap-2.5">
+          <input type="checkbox" name="var" value="{{.Name}}" {{if index $sel .Name}}checked{{end}}
+            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500">
+          <span class="min-w-0">
+            <span class="block truncate text-sm font-medium text-slate-800">{{.EffectiveLabel}}</span>
+            <code class="text-[11px] text-slate-400">{{.Name}}</code>
+          </span>
+        </label>
+        {{end}}
+      </div>
+      <div class="mt-5 space-y-2 border-t border-slate-100 pt-4">
+        <button type="submit" class="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">Update preview</button>
+        <button type="submit" name="download" value="md" class="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Download Markdown</button>
+        <button type="submit" name="download" value="html" class="w-full rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Download HTML</button>
+      </div>
+    </form>
+
+    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div class="border-b border-slate-100 bg-slate-50 px-5 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Preview</div>
+      {{if .Preview}}
+      <article class="manifest-doc px-8 py-6">{{.Preview}}</article>
+      {{else}}
+      <p class="px-8 py-10 text-center text-sm text-slate-500">Select at least one variable to preview the manifest.</p>
+      {{end}}
+    </div>
+  </div>
+</div>
+{{end}}

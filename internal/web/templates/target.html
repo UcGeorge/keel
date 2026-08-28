@@ -1,0 +1,147 @@
+{{define "content"}}
+<div class="space-y-8">
+  <div>
+    <a href="{{.BackURL}}" class="text-sm text-slate-500 hover:text-slate-700">← {{.Dep.Name}}</a>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <h1 class="text-xl font-semibold tracking-tight text-slate-900">{{.Dep.Name}} <span class="text-slate-300">/</span> {{.Target.Name}}</h1>
+      {{if .Target.AutoDeploy}}<span class="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-teal-600/20">auto-deploys on push</span>{{end}}
+    </div>
+    {{with .Target.Description}}<p class="mt-1 text-sm text-slate-500">{{.}}</p>{{end}}
+  </div>
+
+  {{if .Problems}}
+  <div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
+    <p class="text-sm font-medium text-amber-900">This target is not ready to deploy</p>
+    <ul class="mt-2 space-y-1 text-sm text-amber-800">
+      {{range .Problems}}<li class="flex gap-2"><span class="select-none">•</span><span>{{.}}</span></li>{{end}}
+    </ul>
+  </div>
+  {{end}}
+
+  <section class="rounded-lg border border-slate-200 bg-white">
+    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+      <h2 class="text-sm font-semibold text-slate-900">Variables</h2>
+      <a href="{{.ManifestURL}}" class="text-sm font-medium text-teal-700 hover:text-teal-800">Export variable manifest →</a>
+    </div>
+    <div class="px-5 py-5">
+      {{if .Fields}}
+      <form method="post" action="{{.SaveURL}}" id="config-var-form" {{if not .CanConfigure}}data-readonly{{end}}>
+        {{template "csrf_field" .CSRF}}
+        {{template "var_fields" dict "Layout" .Layout "ReadOnly" (not .CanConfigure) "Preselect" false}}
+        {{if .CanConfigure}}
+        <div class="mt-6 flex items-center gap-3 border-t border-slate-100 pt-5">
+          <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Save variables</button>
+          <span class="text-xs text-slate-400">Secrets are stored encrypted. Leave a saved secret blank to keep it.</span>
+        </div>
+        {{end}}
+      </form>
+      {{else if not .DeployFields}}
+      <p class="text-sm text-slate-500">This deployment declares no variables — it can be deployed as is.</p>
+      {{else}}
+      <p class="text-sm text-slate-500">Every variable of this deployment is provided at deploy time.</p>
+      {{end}}
+      {{if .DeployFields}}
+      <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+        <span class="text-xs font-medium text-slate-500">Asked when a deploy starts:</span>
+        {{range .DeployFields}}
+        <code class="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-600/20">{{.V.Name}}</code>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="rounded-lg border border-slate-200 bg-white px-5 py-4">
+    <div class="flex flex-wrap items-center gap-4">
+      <div>
+        <h2 class="text-sm font-semibold text-slate-900">Deploy</h2>
+        <p class="mt-0.5 text-sm text-slate-500">Builds the environment image and runs the deployment steps against this target's variables.</p>
+      </div>
+      {{if .CanDeploy}}
+      {{if .DeployFields}}
+      <button type="button" id="deploy-open" class="ml-auto inline-flex items-center gap-2 rounded-md bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">
+        <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg>
+        Deploy now
+      </button>
+      {{else}}
+      <form method="post" action="{{.DeployURL}}" class="ml-auto">
+        {{template "csrf_field" .CSRF}}
+        <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg>
+          Deploy now
+        </button>
+      </form>
+      {{end}}
+      {{else}}
+      <p class="ml-auto text-sm text-slate-400">You don't have permission to deploy this target.</p>
+      {{end}}
+    </div>
+  </section>
+
+  {{if and .CanDeploy .DeployFields}}
+  <dialog id="deploy-modal" class="m-auto w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-0 text-slate-800 shadow-xl backdrop:bg-ink-deep/60">
+    <form method="post" action="{{.DeployURL}}" id="deploy-var-form">
+      {{template "csrf_field" .CSRF}}
+      <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div>
+          <h2 class="text-sm font-semibold text-slate-900">Deploy {{.Dep.Name}} <span class="text-slate-300">/</span> {{.Target.Name}}</h2>
+          <p class="mt-0.5 text-xs text-slate-500">These values apply to this run only; the target's saved variables are used for everything else.</p>
+        </div>
+        <button type="button" class="deploy-modal-close rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Close">
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z"/></svg>
+        </button>
+      </div>
+      <div class="max-h-[65vh] overflow-y-auto px-5 py-5">
+        {{template "var_fields" dict "Layout" .DeployLayout "ReadOnly" false "Preselect" true}}
+      </div>
+      <div class="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-4">
+        <button type="button" class="deploy-modal-close rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+        <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-teal-600 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg>
+          Start deploy
+        </button>
+      </div>
+    </form>
+  </dialog>
+  <script>
+    (function () {
+      var modal = document.getElementById('deploy-modal');
+      var open = document.getElementById('deploy-open');
+      if (open) open.addEventListener('click', function () { modal.showModal(); });
+      modal.querySelectorAll('.deploy-modal-close').forEach(function (b) {
+        b.addEventListener('click', function () { modal.close(); });
+      });
+      {{if .DeployOpen}}modal.showModal();{{end}}
+    })();
+  </script>
+  {{end}}
+
+  {{if and .LatestOutputs .LatestOutputsRun}}
+  {{template "outputs_card" dict "Title" "Latest outputs"
+      "Outputs" .LatestOutputs
+      "RunURL" .LatestOutputsRun.URL
+      "RunNote" (printf "run %s · %s" (truncate 8 .LatestOutputsRun.ID) (timeago .LatestOutputsRun.CreatedAt))}}
+  {{template "outputs_script"}}
+  {{end}}
+
+  <section>
+    <h2 class="text-base font-semibold text-slate-900">Run history</h2>
+    <div class="mt-3">{{template "runs_table" .Runs}}</div>
+  </section>
+
+  {{template "varform_script"}}
+
+  {{if .CanConfigure}}
+  <section class="rounded-lg border border-slate-200 bg-white p-5">
+    <h2 class="text-sm font-semibold text-slate-900">Target settings</h2>
+    <div class="mt-4">{{template "target_form" dict "Form" .EditForm "CSRF" .CSRF}}</div>
+    <div class="mt-6 border-t border-slate-100 pt-4">
+      <form method="post" action="{{.DeleteURL}}" onsubmit="return confirm('Delete this target and its saved variables? Run history is kept.')">
+        {{template "csrf_field" .CSRF}}
+        <button type="submit" class="rounded-md border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50">Delete target</button>
+      </form>
+    </div>
+  </section>
+  {{end}}
+</div>
+{{end}}

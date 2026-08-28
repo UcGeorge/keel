@@ -1,0 +1,38 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold tracking-tight text-slate-900">Repositories</h1>
+      <p class="mt-1 text-sm text-slate-500">Connect a repository with a keel.yaml to see and run its deployments.</p>
+    </div>
+    {{if .CanConfigure}}
+    <a href="{{.ConnectURL}}" class="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">Connect repository</a>
+    {{end}}
+  </div>
+
+  {{if .Repos}}
+  <div class="grid gap-4 sm:grid-cols-2">
+    {{range .Repos}}
+    <a href="{{.URL}}" class="group rounded-lg border border-slate-200 bg-white p-5 shadow-sm transition hover:border-teal-300 hover:shadow">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+          <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.75 2A2.75 2.75 0 0 0 2 4.75v10.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25V4.75A2.75 2.75 0 0 0 15.25 2H4.75Zm2.03 5.28a.75.75 0 0 0-1.06-1.06L3.47 8.47a.75.75 0 0 0 0 1.06l2.25 2.25a.75.75 0 0 0 1.06-1.06L5.06 9l1.72-1.72Zm7.5-1.06a.75.75 0 1 0-1.06 1.06L14.94 9l-1.72 1.72a.75.75 0 1 0 1.06 1.06l2.25-2.25a.75.75 0 0 0 0-1.06l-2.25-2.25ZM11.7 4.72a.75.75 0 0 0-1.4-.54l-2.5 6.5a.75.75 0 1 0 1.4.54l2.5-6.5Z" clip-rule="evenodd"/></svg>
+        </span>
+        <div class="min-w-0">
+          <h3 class="truncate text-sm font-semibold text-slate-900 group-hover:text-teal-700">{{.Name}}</h3>
+          <p class="truncate text-xs text-slate-400">{{if .GithubFullName}}{{.GithubFullName}}{{else}}{{.GitURL}}{{end}} · {{.Branch}}</p>
+        </div>
+        <span class="ml-auto {{statusbadge .Status}}"><span class="h-1.5 w-1.5 rounded-full {{statusdot .Status}}"></span>{{if eq .Status "ok"}}ready{{else}}{{.Status}}{{end}}</span>
+      </div>
+      <div class="mt-4 flex items-center gap-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
+        <span>{{.Deployments}} deployment{{if ne .Deployments 1}}s{{end}}</span>
+        {{if .LastSyncedAt}}<span class="ml-auto">synced {{timeago (deref .LastSyncedAt)}}</span>{{end}}
+      </div>
+    </a>
+    {{end}}
+  </div>
+  {{else}}
+  {{template "empty_state" dict "Title" "No repositories connected" "Hint" "Connect the repository that holds your keel.yaml to get started."}}
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,198 @@
+{{/* var_fields renders the variable inputs of a deployment target, laid out
+     into the groups and rows declared in keel.yaml.
+     Context: dict with:
+       Layout    web.VarLayoutVM
+       ReadOnly  bool
+       Preselect bool — preselect defaults in selects (deploy modal)
+*/}}
+{{define "var_fields"}}
+{{$ro := .ReadOnly}}
+{{$pre := .Preselect}}
+<div class="space-y-6">
+  {{range .Layout.Ungrouped}}
+  {{template "var_row" dict "Row" . "ReadOnly" $ro "Preselect" $pre}}
+  {{end}}
+
+  {{range .Layout.Groups}}
+  <details class="group overflow-hidden rounded-lg border border-slate-200 bg-slate-50" {{if not .Collapsed}}open{{end}}>
+    <summary class="flex cursor-pointer select-none items-center gap-2.5 px-4 py-3 hover:bg-slate-100">
+      <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg>
+      <span class="text-sm font-semibold text-slate-900">{{.Label}}</span>
+      <span class="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500">{{.Count}} variable{{if ne .Count 1}}s{{end}}</span>
+    </summary>
+    <div class="space-y-6 border-t border-slate-200 bg-white px-4 py-5 sm:px-5">
+      {{with .Description}}<div class="prose-sm -mt-1 text-sm text-slate-500">{{markdown .}}</div>{{end}}
+      {{range .Rows}}
+      {{template "var_row" dict "Row" . "ReadOnly" $ro "Preselect" $pre}}
+      {{end}}
+    </div>
+  </details>
+  {{end}}
+</div>
+{{end}}
+
+{{/* var_row renders one horizontal row: side-by-side fields split by their
+     flex shares, or a single full-width rowless field. */}}
+{{define "var_row"}}
+{{$ro := .ReadOnly}}
+{{$pre := .Preselect}}
+{{if .Row.Full}}
+{{range .Row.Fields}}{{template "var_field" dict "F" . "ReadOnly" $ro "Preselect" $pre}}{{end}}
+{{else}}
+<div class="flex flex-wrap gap-x-5 gap-y-6">
+  {{range .Row.Fields}}
+  <div class="min-w-[14rem]" style="flex: {{printf "%g" .V.EffectiveFlex}} 1 0%">
+    {{template "var_field" dict "F" . "ReadOnly" $ro "Preselect" $pre}}
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{/* var_field renders one variable's label, input, error, and description.
+     Fields with a `when:` condition carry data attributes the form script
+     uses to enable/disable them live; the server renders the initial state.
+     Context: dict with F web.VarFieldVM, ReadOnly bool, Preselect bool */}}
+{{define "var_field"}}
+{{$ro := .ReadOnly}}
+{{$f := .F}}
+{{$v := $f.V}}
+{{$off := or $ro (not $f.Active)}}
+{{$cur := $f.Value}}
+{{if and .Preselect (eq $cur "")}}{{$cur = $v.Default}}{{end}}
+<div data-var="{{$v.Name}}"
+  {{with $v.When}}data-when-var="{{.Var}}" data-when-op="{{.Op}}" data-when-value="{{if eq .Op "in"}}{{json .Values}}{{else}}{{.Value}}{{end}}" data-when-want="{{.Want}}"{{end}}
+  class="{{if not $f.Active}}opacity-50{{end}}">
+  <div class="flex flex-wrap items-center gap-2">
+    <label for="var-{{$v.Name}}" class="block text-sm font-medium text-slate-900">{{$v.EffectiveLabel}}</label>
+    <code class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{{$v.Name}}</code>
+    {{if $v.Secret}}
+    <span class="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-violet-600/20">
+      <svg class="h-3 w-3" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clip-rule="evenodd"/></svg>
+      secret
+    </span>
+    {{end}}
+    {{if not $v.Required}}<span class="text-xs text-slate-400">optional</span>{{end}}
+  </div>
+
+  <div class="mt-1.5">
+    {{if eq $v.Type "select"}}
+    <select id="var-{{$v.Name}}" name="{{$v.Name}}" {{if $off}}disabled{{end}} {{with $v.Default}}data-default="{{.}}"{{end}}
+      class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500">
+      <option value="">{{if $v.Default}}— default: {{$v.Default}} —{{else}}— select —{{end}}</option>
+      {{range $v.Options}}
+      <option value="{{.Value}}" {{if eq .Value $cur}}selected{{end}}>{{.EffectiveLabel}}</option>
+      {{end}}
+    </select>
+
+    {{else if eq $v.Type "boolean"}}
+    <select id="var-{{$v.Name}}" name="{{$v.Name}}" {{if $off}}disabled{{end}} {{with $v.Default}}data-default="{{.}}"{{end}}
+      class="block w-full max-w-[10rem] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500">
+      <option value="" {{if eq $cur ""}}selected{{end}}>{{if $v.Default}}— default: {{$v.Default}} —{{else}}—{{end}}</option>
+      <option value="true" {{if eq $cur "true"}}selected{{end}}>true</option>
+      <option value="false" {{if eq $cur "false"}}selected{{end}}>false</option>
+    </select>
+
+    {{else if eq $v.Type "multiline"}}
+    <textarea id="var-{{$v.Name}}" name="{{$v.Name}}" rows="4" {{if $off}}disabled{{end}}
+      placeholder="{{$v.Placeholder}}"
+      class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500">{{$f.Value}}</textarea>
+
+    {{else if $v.Secret}}
+    <input type="password" id="var-{{$v.Name}}" name="{{$v.Name}}" value="" autocomplete="new-password" {{if $off}}disabled{{end}} data-hassaved="{{$f.HasSaved}}"
+      placeholder="{{if $f.HasSaved}}•••••••• (saved — leave blank to keep){{else}}{{$v.Placeholder}}{{end}}"
+      class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500">
+
+    {{else}}
+    <input type="{{if eq $v.Type "number"}}number{{else if eq $v.Type "email"}}email{{else if eq $v.Type "url"}}url{{else}}text{{end}}"
+      {{if eq $v.Type "number"}}step="any"{{end}}
+      id="var-{{$v.Name}}" name="{{$v.Name}}" value="{{$f.Value}}" {{if $off}}disabled{{end}} {{with $v.Default}}data-default="{{.}}"{{end}}
+      placeholder="{{if $v.Placeholder}}{{$v.Placeholder}}{{else if $v.Default}}{{$v.Default}} (default){{end}}"
+      class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500">
+    {{end}}
+  </div>
+
+  {{with $v.When}}<p class="kv-when-hint mt-1.5 text-xs text-amber-700 {{if $f.Active}}hidden{{end}}">Requires {{.Describe}}</p>{{end}}
+  {{with $f.Error}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
+  {{with $v.Description}}<div class="prose-sm mt-1.5 text-sm text-slate-500">{{markdown .}}</div>{{end}}
+  {{if and $v.Default (not $v.Secret)}}<p class="mt-1 text-xs text-slate-400">Default: <code class="rounded bg-slate-100 px-1 py-0.5">{{$v.Default}}</code></p>{{end}}
+</div>
+{{end}}
+
+{{/* varform_script wires conditional (`when:`) fields: it re-evaluates each
+     condition as values change and enables/disables the dependent fields.
+     The server renders the initial state; this keeps it live. Include once
+     per page that renders var_fields. */}}
+{{define "varform_script"}}
+<script>
+  (function () {
+    var forms = Array.prototype.filter.call(
+      document.querySelectorAll('#config-var-form, #deploy-var-form'),
+      function (f) { return f; });
+    if (!forms.length) return;
+
+    function inputFor(name) {
+      for (var i = 0; i < forms.length; i++) {
+        var el = forms[i].querySelector('[name="' + name + '"]');
+        if (el) return el;
+      }
+      return null;
+    }
+    // The effective value the server would see: the input's value, its
+    // default when blank, and nothing at all while it is disabled.
+    function effValue(name) {
+      var el = inputFor(name);
+      if (!el || el.disabled) return '';
+      var v = (el.value || '').trim();
+      if (!v) v = el.getAttribute('data-default') || '';
+      if (!v && el.getAttribute('data-hassaved') === 'true') v = '\u0001saved';
+      return v;
+    }
+    function holds(w) {
+      var rv = effValue(w.getAttribute('data-when-var'));
+      var op = w.getAttribute('data-when-op');
+      var val = w.getAttribute('data-when-value') || '';
+      if (op === 'set') return (rv !== '') === (w.getAttribute('data-when-want') === 'true');
+      if (rv === '') return false;
+      if (op === 'eq') return rv === val;
+      if (op === 'ne') return rv !== val;
+      if (op === 'in') {
+        try { return JSON.parse(val).indexOf(rv) >= 0; } catch (e) { return false; }
+      }
+      var a = parseFloat(rv), b = parseFloat(val);
+      if (isNaN(a) || isNaN(b)) return false;
+      if (op === 'gt') return a > b;
+      if (op === 'gte') return a >= b;
+      if (op === 'lt') return a < b;
+      if (op === 'lte') return a <= b;
+      return false;
+    }
+    function refresh() {
+      var conds = [];
+      forms.forEach(function (f) {
+        if (f.hasAttribute('data-readonly')) return;
+        conds = conds.concat(Array.prototype.slice.call(f.querySelectorAll('[data-when-var]')));
+      });
+      // Conditions may chain; passes over an acyclic graph converge.
+      for (var pass = 0; pass <= conds.length; pass++) {
+        var changed = false;
+        conds.forEach(function (w) {
+          var on = holds(w);
+          w.querySelectorAll('input, select, textarea').forEach(function (el) {
+            if (el.disabled === on) { el.disabled = !on; changed = true; }
+          });
+          w.classList.toggle('opacity-50', !on);
+          var hint = w.querySelector('.kv-when-hint');
+          if (hint) hint.classList.toggle('hidden', on);
+        });
+        if (!changed) break;
+      }
+    }
+    forms.forEach(function (f) {
+      f.addEventListener('input', refresh);
+      f.addEventListener('change', refresh);
+    });
+    refresh();
+  })();
+</script>
+{{end}}

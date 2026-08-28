@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold tracking-tight text-slate-900">{{.Repo.Name}}</h1>
+      <p class="mt-1 font-mono text-xs text-slate-400">{{if .Repo.GithubFullName}}{{.Repo.GithubFullName}}{{else}}{{.Repo.GitURL}}{{end}} · {{.Repo.Branch}}{{with .Repo.LastCommitSHA}} @ {{shortsha .}}{{end}}</p>
+      {{if .Repo.LastSyncedAt}}<p class="mt-0.5 text-xs text-slate-400">Last synced {{timeago (deref .Repo.LastSyncedAt)}}</p>{{end}}
+    </div>
+    <div class="flex items-center gap-2">
+      {{if .CanConfigure}}
+      <form method="post" action="{{.SyncURL}}">
+        {{template "csrf_field" .CSRF}}
+        <button type="submit" class="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Sync now</button>
+      </form>
+      <a href="{{.Repo.URL}}/settings" class="rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Settings</a>
+      {{end}}
+    </div>
+  </div>
+
+  {{template "config_errors" .Config}}
+
+  {{if .Deployments}}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {{range .Deployments}}{{template "deployment_card" .}}{{end}}
+  </div>
+  {{else if .Config.OK}}
+  {{template "empty_state" dict "Title" "No deployments defined" "Hint" "Add entries under deployments: in this repository's keel.yaml, push, and sync."}}
+  {{end}}
+</div>
+{{end}}

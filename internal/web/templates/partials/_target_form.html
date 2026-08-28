@@ -1,0 +1,37 @@
+{{/* target_form renders the create/edit deployment-target form.
+     Context: dict with:
+       Form web.TargetFormVM
+       CSRF string
+*/}}
+{{define "target_form"}}
+{{$f := .Form}}
+<form method="post" action="{{$f.Action}}" class="space-y-4">
+  {{template "csrf_field" .CSRF}}
+  <div>
+    <label for="target-name" class="block text-sm font-medium text-slate-900">Target name</label>
+    <input type="text" id="target-name" name="name" value="{{$f.Name}}" required
+      placeholder="e.g. client-acme, staging, eu-cluster"
+      class="mt-1.5 block w-full max-w-lg rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+    {{with $f.NameError}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
+    <p class="mt-1 text-xs text-slate-400">Lowercase letters, digits, and hyphens. A target is one concrete place this deployment goes — a client, an environment, a region.</p>
+  </div>
+  <div>
+    <label for="target-desc" class="block text-sm font-medium text-slate-900">Description <span class="font-normal text-slate-400">(optional)</span></label>
+    <input type="text" id="target-desc" name="description" value="{{$f.Description}}"
+      class="mt-1.5 block w-full max-w-lg rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+  </div>
+  {{if $f.ShowAuto}}
+  <div class="flex items-start gap-2.5">
+    <input type="checkbox" id="target-auto" name="auto_deploy" value="true" {{if $f.AutoDeploy}}checked{{end}}
+      class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500">
+    <div>
+      <label for="target-auto" class="text-sm font-medium text-slate-900">Deploy automatically on push</label>
+      <p class="text-xs text-slate-500">When the connected branch receives a push, this target is deployed with its saved variables.</p>
+    </div>
+  </div>
+  {{end}}
+  <div class="pt-1">
+    <button type="submit" class="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">{{$f.Submit}}</button>
+  </div>
+</form>
+{{end}}

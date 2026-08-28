@@ -1,0 +1,17 @@
+{{define "content"}}
+<div class="mx-auto mt-8 w-full max-w-md">
+  <h1 class="text-xl font-semibold tracking-tight text-slate-900">New organization</h1>
+  <p class="mt-1 text-sm text-slate-500">Organizations group repositories, deployments, and the people who run them.</p>
+  <form method="post" action="/orgs/new" class="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+    {{template "csrf_field" .CSRF}}
+    {{with .Error}}<div class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{{.}}</div>{{end}}
+    <div>
+      <label for="name" class="block text-sm font-medium text-slate-900">Organization name</label>
+      <input type="text" id="name" name="name" value="{{.Name}}" required autofocus
+        placeholder="e.g. Acme Corp"
+        class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+    </div>
+    <button type="submit" class="w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">Create organization</button>
+  </form>
+</div>
+{{end}}

@@ -1,0 +1,52 @@
+{{define "content"}}
+<div class="space-y-6" {{if .Live}}hx-ext="sse" sse-connect="{{.EventsURL}}" sse-close="done"{{end}}>
+  <div>
+    <a href="{{.BackURL}}" class="text-sm text-slate-500 hover:text-slate-700">← Back</a>
+    <h1 class="mt-2 text-xl font-semibold tracking-tight text-slate-900">Run <span class="font-mono text-base text-slate-400">{{truncate 8 .Run.ID}}</span></h1>
+  </div>
+
+  <div {{if .Live}}sse-swap="meta" hx-swap="innerHTML"{{end}} id="run-meta">
+    {{template "run_meta" dict "Run" .Run "Steps" .Steps "CanCancel" .CanCancel "CSRF" .CSRF}}
+  </div>
+
+  {{if .Outputs}}
+  {{template "outputs_card" dict "Title" "Outputs" "Outputs" .Outputs "RunURL" "" "RunNote" ""}}
+  {{template "outputs_script"}}
+  {{end}}
+
+  <section class="overflow-hidden rounded-lg border border-ink-soft bg-ink-deep">
+    <div class="flex items-center justify-between border-b border-ink-soft px-4 py-2">
+      <h2 class="text-xs font-semibold uppercase tracking-wide text-fog-dim">Logs</h2>
+      {{if .Live}}<span class="inline-flex items-center gap-1.5 text-xs text-sky-400"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400"></span>live</span>{{end}}
+    </div>
+    <div id="run-log" class="max-h-[32rem] overflow-y-auto px-4 py-3 font-mono text-[13px] leading-relaxed text-fog"
+      {{if .Live}}sse-swap="log" hx-swap="beforeend"{{end}}>
+      {{range .LogLines}}<div class="whitespace-pre-wrap break-all">{{.Line}}</div>{{end}}
+    </div>
+  </section>
+</div>
+
+{{if .Live}}
+<script>
+  // Keep the log scrolled to the bottom while the user hasn't scrolled up.
+  (function () {
+    var log = document.getElementById('run-log');
+    if (!log) return;
+    var pinned = true;
+    log.addEventListener('scroll', function () {
+      pinned = log.scrollTop + log.clientHeight >= log.scrollHeight - 24;
+    });
+    new MutationObserver(function () {
+      if (pinned) log.scrollTop = log.scrollHeight;
+    }).observe(log, { childList: true });
+    log.scrollTop = log.scrollHeight;
+    // When the stream closes (run finished), reload for the final state.
+    document.body.addEventListener('htmx:sseClose', function (e) {
+      if (e.detail && e.detail.type === 'message') {
+        setTimeout(function () { window.location.reload(); }, 400);
+      }
+    });
+  })();
+</script>
+{{end}}
+{{end}}

@@ -1,0 +1,40 @@
+version: "2"
+sql:
+  - engine: "sqlite"
+    schema: "internal/store/devdb/migrations"
+    queries: "internal/store/devdb/queries.sql"
+    gen:
+      go:
+        package: "devdb"
+        out: "internal/store/devdb"
+        emit_result_struct_pointers: true
+
+  - engine: "postgresql"
+    schema: "internal/store/clouddb/migrations"
+    queries: "internal/store/clouddb/queries.sql"
+    gen:
+      go:
+        package: "clouddb"
+        out: "internal/store/clouddb"
+        sql_package: "pgx/v5"
+        emit_result_struct_pointers: true
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type: "github.com/google/uuid.NullUUID"
+          - db_type: "pg_catalog.timestamptz"
+            go_type: "time.Time"
+          - db_type: "pg_catalog.timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true

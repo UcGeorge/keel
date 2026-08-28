@@ -1,0 +1,60 @@
+{{/* runs_table renders a table of runs.
+     Context: dict with:
+       Runs       []web.RunVM
+       ShowRepo   bool
+       ShowTarget bool
+       Poll       bool   — refresh the table while runs are active
+       PollURL    string — fragment URL returning this table
+*/}}
+{{define "runs_table"}}
+<div {{if .Poll}}hx-get="{{.PollURL}}" hx-trigger="every 3s" hx-swap="outerHTML"{{end}}>
+  {{if .Runs}}
+  <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="min-w-full divide-y divide-slate-200 text-sm">
+      <thead class="bg-slate-50">
+        <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <th class="px-4 py-2.5">Status</th>
+          {{if .ShowRepo}}<th class="px-4 py-2.5">Repository</th>{{end}}
+          {{if .ShowTarget}}<th class="px-4 py-2.5">Deployment / target</th>{{end}}
+          <th class="px-4 py-2.5">Trigger</th>
+          <th class="px-4 py-2.5">Started</th>
+          <th class="px-4 py-2.5">Duration</th>
+          <th class="px-4 py-2.5"><span class="sr-only">Open</span></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {{range .Runs}}
+        <tr class="hover:bg-slate-50">
+          <td class="px-4 py-3">
+            <span class="{{statusbadge .Status}}"><span class="h-1.5 w-1.5 rounded-full {{statusdot .Status}}"></span>{{.Status}}</span>
+          </td>
+          {{if $.ShowRepo}}<td class="px-4 py-3 font-medium text-slate-700">{{.RepoName}}</td>{{end}}
+          {{if $.ShowTarget}}
+          <td class="px-4 py-3">
+            <span class="font-medium text-slate-800">{{.Deployment}}</span>
+            <span class="text-slate-400">/</span>
+            <span class="text-slate-600">{{.TargetName}}</span>
+          </td>
+          {{end}}
+          <td class="px-4 py-3 text-slate-500">
+            {{if eq .Trigger "push"}}
+              push{{with .CommitSHA}} <code class="rounded bg-slate-100 px-1 py-0.5 text-xs">{{shortsha .}}</code>{{end}}
+            {{else}}
+              {{if .StartedBy}}{{.StartedBy}}{{else}}manual{{end}}
+            {{end}}
+          </td>
+          <td class="px-4 py-3 text-slate-500" title="{{datefmt .CreatedAt}}">{{timeago .CreatedAt}}</td>
+          <td class="px-4 py-3 text-slate-500">{{duration .Duration}}</td>
+          <td class="px-4 py-3 text-right">
+            <a href="{{.URL}}" class="font-medium text-teal-700 hover:text-teal-800">View →</a>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  {{template "empty_state" dict "Title" "No runs yet" "Hint" "Runs appear here once a deployment is started."}}
+  {{end}}
+</div>
+{{end}}

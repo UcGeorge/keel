@@ -1,0 +1,20 @@
+{{/* config_errors renders configuration state banners.
+     Context: web.ConfigStatusVM */}}
+{{define "config_errors"}}
+{{if .Missing}}
+<div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
+  <p class="text-sm font-medium text-amber-900">No keel.yaml found</p>
+  <p class="mt-1 text-sm text-amber-800">This repository has no Keel configuration{{with .Source}} at <code class="rounded bg-amber-100 px-1 py-0.5">{{.}}</code>{{end}}. Add a <code class="rounded bg-amber-100 px-1 py-0.5">keel.yaml</code> to define deployments.</p>
+</div>
+{{else if not .OK}}
+<div class="rounded-lg border border-red-200 bg-red-50 px-5 py-4">
+  <p class="text-sm font-medium text-red-900">The Keel configuration is invalid</p>
+  {{with .Source}}<p class="mt-0.5 text-xs text-red-700">{{.}}</p>{{end}}
+  <ul class="mt-2 space-y-1 text-sm text-red-800">
+    {{range .Errors}}
+    <li class="flex gap-2"><span class="select-none">•</span><span>{{if .Path}}<code class="rounded bg-red-100 px-1 py-0.5 text-xs">{{.Path}}</code> {{end}}{{.Message}}</span></li>
+    {{end}}
+  </ul>
+</div>
+{{end}}
+{{end}}
