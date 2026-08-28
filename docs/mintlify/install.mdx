@@ -106,9 +106,25 @@ $ keel --help
 
 ## Upgrade
 
-Run the install command again — it always installs the latest release, or
-the release pinned with `KEEL_VERSION`. With Go, re-run `go install` with the
-new version.
+```console
+$ keel update
+Current version: v0.3.0
+Latest release:  v0.4.0
+Downloading keel_0.4.0_darwin_arm64.tar.gz
+Verified SHA-256 against checksums.txt
+Updated /usr/local/bin/keel to v0.4.0
+Now running: keel version v0.4.0
+```
+
+`keel update` replaces the binary in place after verifying the download's
+checksum; `keel update --check` only tells you whether a newer release
+exists. The CLI also looks for a new release in the background at most
+once a day and mentions it after a command — set `KEEL_NO_UPDATE_CHECK=1`
+to turn that off. Details are in the [CLI reference](/reference/cli#keel-update).
+
+Running the install command again works too — it always installs the latest
+release, or the release pinned with `KEEL_VERSION`. With Go, re-run
+`go install` with the new version.
 
 ## Uninstall
 
@@ -121,7 +137,8 @@ machine, both safe to delete:
 - A key file that encrypts those values: `~/Library/Application Support/keel/dev.key`
   on macOS, `~/.config/keel/dev.key` on Linux, `%AppData%\keel\dev.key` on
   Windows. Deleting it makes every saved value in every `.keel/dev.db` on that
-  machine unreadable.
+  machine unreadable. The same directory holds `update-check.json`, the
+  background update check's last answer.
 
 ## Vendoring Keel into a repository
 

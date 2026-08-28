@@ -69,6 +69,10 @@ and checksums for every platform are on the
 [releases page](https://github.com/UcGeorge/keel/releases); the install
 scripts verify the SHA-256 of what they download.
 
+Upgrade with `keel update` — it verifies and swaps the binary in place. The
+CLI also checks for a new release in the background once a day and says so
+after a command (`KEEL_NO_UPDATE_CHECK=1` turns that off).
+
 ## Quick start (local)
 
 Requirements: Docker running.
@@ -167,7 +171,7 @@ its own Dockerfile — or several deployments can share one. Full reference:
 ## Repository layout
 
 ```
-cmd/keel            the CLI (init, validate, dev, deploy, manifest, skills)
+cmd/keel            the CLI (init, validate, dev, deploy, manifest, skills, update)
 cmd/keel-cloud      the cloud web service
 internal/config     keel.yaml schema, parser, validation
 internal/engine     Docker execution engine (build → run steps, log streaming)
@@ -177,6 +181,7 @@ internal/devserver  keel dev UI
 internal/cloudserver Keel Cloud (orgs, auth, repos, webhooks)
 internal/store      sqlc queries + golang-migrate migrations (SQLite & PostgreSQL)
 internal/agentskills agent skill directories + installer behind `keel skills`
+internal/selfupdate  release lookup, background update check, `keel update`
 skills/             the agent skills (SKILL.md per skill), embedded into the CLI
 ```
 

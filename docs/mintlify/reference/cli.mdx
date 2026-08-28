@@ -1,6 +1,6 @@
 ---
 title: "CLI"
-description: "Every keel command and flag: init, validate, dev, deploy, manifest, and skills, plus where the CLI keeps its state."
+description: "Every keel command and flag: init, validate, dev, deploy, manifest, skills, and update, plus the background update check and where the CLI keeps its state."
 icon: "terminal"
 ---
 
@@ -115,12 +115,55 @@ directories Keel wrote. `list` prints the shipped skills with their
 descriptions and files. `agents` prints every supported agent with its
 key, project and user-wide directories, and whether it was detected.
 
+## `keel update`
+
+```console
+$ keel update [--check] [--version TAG] [--force]
+```
+
+Downloads the latest release from GitHub, verifies the archive's SHA-256
+against the release's `checksums.txt`, and replaces the running executable
+in place — the same procedure as the install script, without re-running it.
+Afterwards it runs the new binary's `--version` to confirm it works.
+
+| Flag | Description |
+|---|---|
+| `--check` | Report whether a newer release exists and exit without installing. |
+| `--version` | Install this release tag instead of the latest, for example `v0.3.0`. Allows downgrades. |
+| `--force` | Replace a development build (one whose version is not a release tag, such as `dev` or a commit hash) with a release. Without it, `keel update` refuses on such builds. |
+
+When the executable's directory is not writable, the command says so —
+re-run it with elevated permissions (`sudo keel update`) or use the install
+script. On Windows the old executable is renamed to `keel.exe.old` next to
+the new one, because a running program cannot be overwritten; delete it at
+any time.
+
+### Background update check
+
+Every command checks for a newer release **at most once a day**. The
+request runs while the command does; a command that finishes first waits
+at most two seconds for the answer, and on every other day the saved
+answer is used with no request at all. When a newer release is known, a
+note is printed on standard error after the command finishes:
+
+```text
+A new release of keel is available: v0.3.0 → v0.4.0
+Run `keel update` to install it.
+```
+
+The check contacts `https://github.com/UcGeorge/keel/releases/latest` and
+sends nothing but the request. It is skipped for development builds, when
+`KEEL_NO_UPDATE_CHECK` is set to any value, or when `CI` is set. The last
+answer is kept in `update-check.json` under the user config directory
+(next to `dev.key`, see below).
+
 ## State on disk
 
 | Path | Contents |
 |---|---|
 | `<repo>/.keel/dev.db` | SQLite: targets, encrypted values, runs, logs, outputs. Created by `keel dev`. |
 | `<repo>/.keel/.gitignore` | Written by Keel so the database stays out of git while `.keel/bin` (from embedding) can be committed. |
+| `update-check.json` under the user config directory | When the background update check last ran and the newest release it found. Safe to delete. |
 | `dev.key` under the user config directory | The AES-256 key for every `.keel/dev.db` on this machine. macOS `~/Library/Application Support/keel/dev.key`; Linux `$XDG_CONFIG_HOME/keel/dev.key` (usually `~/.config/keel/dev.key`); Windows `%AppData%\keel\dev.key`. Created on first use. |
 
 Deleting `dev.key` makes every saved value on the machine unreadable; copy

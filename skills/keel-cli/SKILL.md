@@ -1,6 +1,6 @@
 ---
 name: keel-cli
-description: Run Keel from the terminal and CI — keel init, validate, dev, deploy (value precedence, --target, --var, --var-file, exit codes), manifest export, installing or upgrading the keel binary, embedding it into a repository with make embed, and keel-cloud configuration. Use when scripting Keel deployments, wiring Keel into GitHub Actions or another CI system, debugging a failed keel deploy, or setting up Keel Cloud.
+description: Run Keel from the terminal and CI — keel init, validate, dev, deploy (value precedence, --target, --var, --var-file, exit codes), manifest export, installing or updating the keel binary (keel update), embedding it into a repository with make embed, and keel-cloud configuration. Use when scripting Keel deployments, wiring Keel into GitHub Actions or another CI system, debugging a failed keel deploy, or setting up Keel Cloud.
 license: MIT
 metadata:
   author: keel
@@ -24,7 +24,11 @@ go install github.com/UcGeorge/keel/cmd/keel@latest                  # Go 1.26+
 ```
 
 `KEEL_VERSION=v0.3.0` pins a release; `KEEL_INSTALL_DIR` changes the
-destination. Re-running the installer upgrades. `keel --version` verifies.
+destination. `keel --version` verifies. Upgrade with `keel update` (verifies
+the download's SHA-256, swaps the binary in place; `--check` only reports;
+`--version vX.Y.Z` pins or downgrades). The CLI checks for a new release in
+the background once a day and prints a note after a command;
+`KEEL_NO_UPDATE_CHECK=1` disables it.
 
 ## Commands
 
@@ -36,6 +40,7 @@ destination. Re-running the installer upgrades. `keel --version` verifies.
 | `keel deploy <deployment> [-t TARGET] [--var NAME=value]… [--var-file FILE]` | Headless run: build image, run steps, stream log, print outputs |
 | `keel manifest <deployment> [-o FILE] [-f md\|html] [--var NAME]… [--project NAME]` | Generate the variable manifest |
 | `keel skills install [--agent KEY]… [--global]` | Install these Keel skills into AI coding agents' skill directories |
+| `keel update [--check] [--version TAG]` | Self-update from the latest GitHub release, checksum-verified |
 | `keel --version`, `keel <command> --help` | |
 
 All commands use the current directory unless `[dir]` is given. Exit
@@ -124,6 +129,7 @@ format constraints — exactly as written in `keel.yaml`.
 | `<repo>/.keel/dev.db` | SQLite: targets, encrypted values, runs, logs, outputs (from `keel dev`) |
 | `<repo>/.keel/.gitignore` | written by Keel so `dev.db` stays out of git while `.keel/bin` can be committed |
 | `dev.key` in the user config dir | AES-256 key for every `dev.db` on the machine: `~/Library/Application Support/keel/`, `$XDG_CONFIG_HOME/keel/` (`~/.config/keel/`), `%AppData%\keel\` |
+| `update-check.json` next to `dev.key` | last background update check; safe to delete |
 
 Deleting `dev.key` makes every saved value on the machine unreadable.
 
