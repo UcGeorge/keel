@@ -106,4 +106,4 @@ case ":$PATH:" in
     ;;
 esac
 say ""
-say "Next: cd into a repository and run 'keel dev' — the docs are at https://ucgeorge.github.io/keel/"
+say "Next: cd into a repository and run 'keel dev' — the docs are at https://keel-cloud.mintlify.site"

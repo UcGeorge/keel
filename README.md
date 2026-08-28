@@ -50,7 +50,7 @@ default follows the system preference):
 
 ## Documentation
 
-- **Docs:** https://keel.mintlify.app — install, quickstart, concepts,
+- **Docs:** https://keel-cloud.mintlify.site — install, quickstart, concepts,
   guides, and the complete `keel.yaml`, CLI, and Keel Cloud reference.
 - **Site:** https://ucgeorge.github.io/keel/
 - **Source of the docs:** [`docs/mintlify/`](docs/mintlify/) (Mintlify).

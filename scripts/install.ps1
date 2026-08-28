@@ -57,7 +57,7 @@ try {
 
   Write-Host "Installed $(& (Join-Path $dir 'keel.exe') --version) to $dir\keel.exe"
   Write-Host ''
-  Write-Host "Next: cd into a repository and run 'keel dev' - the docs are at https://ucgeorge.github.io/keel/"
+  Write-Host "Next: cd into a repository and run 'keel dev' - the docs are at https://keel-cloud.mintlify.site"
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
