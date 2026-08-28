@@ -44,7 +44,8 @@
               "guides/secrets",
               "guides/headless-and-ci",
               "guides/embed-keel-in-a-repository",
-              "guides/example-multi-cloud"
+              "guides/example-multi-cloud",
+              "guides/ai-agents"
             ]
           },
           {

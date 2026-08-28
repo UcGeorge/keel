@@ -90,6 +90,24 @@ $ keel deploy production --var GREETING=hi             # ad-hoc values
 $ keel manifest production -o required-values.md       # variable manifest
 ```
 
+## AI coding agents
+
+Keel ships agent skills — `SKILL.md` documents that teach Claude Code,
+Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode, Windsurf, and other
+agents the `keel.yaml` schema, the validation rules, environment-image
+patterns, and the CLI — so an agent asked to "make this project deployable
+with Keel" gets it right. Install them into the agents detected on your
+machine (project-level, so they can be committed) or user-wide:
+
+```console
+$ keel skills install            # .claude/skills, .agents/skills, … in this repo
+$ keel skills install --global   # ~/.claude/skills, ~/.codex/skills, …
+$ keel skills agents             # supported agents and their directories
+```
+
+The skills live in [`skills/`](skills/); see the
+[guide](https://keel-cloud.mintlify.site/guides/ai-agents).
+
 ## Quick start (cloud)
 
 ```console
@@ -149,7 +167,7 @@ its own Dockerfile — or several deployments can share one. Full reference:
 ## Repository layout
 
 ```
-cmd/keel            the CLI (init, validate, dev, deploy, manifest)
+cmd/keel            the CLI (init, validate, dev, deploy, manifest, skills)
 cmd/keel-cloud      the cloud web service
 internal/config     keel.yaml schema, parser, validation
 internal/engine     Docker execution engine (build → run steps, log streaming)
@@ -158,6 +176,8 @@ internal/web        shared templates (html/template + HTMX + Tailwind), view mod
 internal/devserver  keel dev UI
 internal/cloudserver Keel Cloud (orgs, auth, repos, webhooks)
 internal/store      sqlc queries + golang-migrate migrations (SQLite & PostgreSQL)
+internal/agentskills agent skill directories + installer behind `keel skills`
+skills/             the agent skills (SKILL.md per skill), embedded into the CLI
 ```
 
 ## Embedding Keel into a repository

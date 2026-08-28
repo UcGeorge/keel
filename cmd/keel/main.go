@@ -1,6 +1,6 @@
 // Command keel is the Keel CLI: initialize a repository, validate its
-// configuration, run the local UI, deploy from the terminal, and export
-// variable manifests.
+// configuration, run the local UI, deploy from the terminal, export
+// variable manifests, and install Keel skills into AI coding agents.
 package main
 
 import (
@@ -30,6 +30,7 @@ values.`,
 		newDevCmd(),
 		newDeployCmd(),
 		newManifestCmd(),
+		newSkillsCmd(),
 	)
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

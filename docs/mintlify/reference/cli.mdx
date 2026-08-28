@@ -1,6 +1,6 @@
 ---
 title: "CLI"
-description: "Every keel command and flag: init, validate, dev, deploy, and manifest, plus where the CLI keeps its state."
+description: "Every keel command and flag: init, validate, dev, deploy, manifest, and skills, plus where the CLI keeps its state."
 icon: "terminal"
 ---
 
@@ -85,6 +85,35 @@ $ keel manifest <deployment> [-o FILE] [-f md|html] [--var NAME]... [--project N
 
 Generates the variable manifest. See the
 [manifest reference](/reference/manifest#cli) for the flags.
+
+## `keel skills`
+
+```console
+$ keel skills install [dir] [-a AGENT]... [-g] [--to DIR] [--skill NAME]... [--force]
+$ keel skills uninstall [dir] [-a AGENT]... [-g] [--to DIR] [--skill NAME]...
+$ keel skills list
+$ keel skills agents
+```
+
+Installs the Keel agent skills — `SKILL.md` documents that teach AI coding
+agents how to write `keel.yaml`, environment images, and use the CLI —
+into the agents' skill directories. See
+[Use Keel with AI coding agents](/guides/ai-agents).
+
+| Flag | Default | Description |
+|---|---|---|
+| `-a`, `--agent` | the agents detected on this machine | Agent key to target; repeatable. `all` targets every supported agent. With no agent detected, the shared `.agents/skills` directory is used. |
+| `-g`, `--global` | off | Write to the agents' user-wide directories instead of `dir` (default `.`). |
+| `--to` | — | Write to this directory instead of any agent's. Not combinable with `--agent` or `--global`. |
+| `--skill` | all | Skill to include; repeatable. |
+| `--force` | off | `install` only: replace a same-named skill directory that Keel did not write. |
+
+`install` replaces skill directories Keel wrote (re-run it after
+upgrading), never touches other directories without `--force`, and prints
+each directory with the agents that read it. `uninstall` removes only
+directories Keel wrote. `list` prints the shipped skills with their
+descriptions and files. `agents` prints every supported agent with its
+key, project and user-wide directories, and whether it was detected.
 
 ## State on disk
 

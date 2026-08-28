@@ -1,0 +1,125 @@
+---
+title: "Use Keel with AI coding agents"
+sidebarTitle: "AI coding agents"
+description: "Install the Keel skills into Claude Code, Codex, Cursor, Gemini CLI, Copilot, OpenCode, Windsurf, and other agents so they write correct keel.yaml files and environment images."
+icon: "robot"
+---
+
+Keel ships **agent skills** — `SKILL.md` documents in the
+[Agent Skills](https://agentskills.io) format that AI coding agents load on
+demand. With them installed, an agent asked to "make this project
+deployable with Keel" knows the `keel.yaml` schema, the validation rules,
+how steps run, which Dockerfile patterns work, and how the CLI behaves,
+instead of guessing from training data.
+
+## Install
+
+From the repository you want the agent to work in:
+
+```console
+$ keel skills install
+  .claude/skills               Claude Code
+  .agents/skills               Codex, Cursor, Gemini CLI, OpenCode
+
+Installed 3 skill(s): keel, keel-cli, keel-environments
+Commit these directories so your teammates' agents get the skills too.
+Re-run `keel skills install` after upgrading keel to refresh them.
+```
+
+The command detects the agents installed on your machine and writes the
+skills into each one's project-level skills directory. Agents that share
+the `.agents/skills` convention get one copy. Commit the directories: the
+skills then travel with the repository, and every collaborator's agent
+picks them up.
+
+<Tabs>
+  <Tab title="User-wide">
+    Install once for every repository on the machine:
+
+    ```console
+    $ keel skills install --global
+    ```
+
+    This writes to the agents' user-wide directories — `~/.claude/skills`,
+    `~/.codex/skills`, `~/.cursor/skills`, and so on.
+  </Tab>
+  <Tab title="Specific agents">
+    ```console
+    $ keel skills install --agent claude-code --agent codex
+    $ keel skills install --agent all
+    ```
+
+    `keel skills agents` lists the keys, the directories, and which agents
+    were detected.
+  </Tab>
+  <Tab title="Any directory">
+    ```console
+    $ keel skills install --to ./my-agent/skills
+    ```
+
+    For an agent that is not in the list, or to inspect the files.
+  </Tab>
+</Tabs>
+
+When no supported agent is detected, the skills go into `.agents/skills`,
+which most agents read.
+
+## The skills
+
+| Skill | What the agent learns |
+|---|---|
+| `keel` | Authoring `keel.yaml`: the schema, every validation rule, how steps execute, choosing variable types, deploy-time and conditional variables, layout, outputs, and writing manifest text for operators. Includes a complete schema reference and a patterns file. |
+| `keel-environments` | Writing the environment Dockerfile: vendor CLI bases for AWS, Google Cloud, Azure, Terraform, and Kubernetes, entrypoint and prompt rules, build context and caching, and the fact that there is no Docker daemon inside a run. |
+| `keel-cli` | Using the CLI headlessly and in CI: `keel deploy` value precedence, var files, exit codes, manifest export, embedding the CLI, and Keel Cloud configuration. |
+
+`keel skills list` prints the same list with each skill's files.
+
+## Supported agents
+
+| Agent | Project directory | User-wide directory |
+|---|---|---|
+| Claude Code | `.claude/skills` | `~/.claude/skills` (or `$CLAUDE_CONFIG_DIR/skills`) |
+| Codex | `.agents/skills` | `~/.codex/skills` (or `$CODEX_HOME/skills`) |
+| Cursor | `.agents/skills` | `~/.cursor/skills` |
+| Gemini CLI | `.agents/skills` | `~/.gemini/skills` |
+| GitHub Copilot | `.agents/skills` | `~/.copilot/skills` |
+| OpenCode | `.agents/skills` | `~/.config/opencode/skills` |
+| Windsurf | `.windsurf/skills` | `~/.codeium/windsurf/skills` |
+| Amp, Antigravity, Cline, Warp, Zed | `.agents/skills` | agent-specific |
+| Augment, Continue, Droid, Goose, Junie, Kilo Code, Kiro CLI, Qwen Code, Roo Code | agent-specific | agent-specific |
+
+The full table with the exact paths is `keel skills agents`. Detection
+looks for the agent's configuration directory in your home directory.
+
+## Updating and removing
+
+Running `keel skills install` again replaces the skill directories Keel
+wrote with the current version's content — do it after upgrading `keel`.
+A directory with the same name that Keel did not write is left alone
+unless you pass `--force`.
+
+```console
+$ keel skills uninstall            # same targeting flags as install
+```
+
+## Using the skills
+
+Skills load when the agent decides they are relevant, so plain requests
+work:
+
+- "Add a Keel deployment that runs our Terraform in `infra/` against GCP,
+  with plan and apply modes."
+- "Fix the `keel validate` errors."
+- "Write a `deploy/aws.Dockerfile` for the `aws-production` deployment."
+- "Export the variable manifest for `client-acme`."
+
+The skills tell the agent to run `keel validate` after editing and to read
+the deployment's existing scripts before writing steps. They also point at
+this documentation site for anything not covered.
+
+<Note>
+  The skills are part of the `keel` source tree under
+  [`skills/`](https://github.com/UcGeorge/keel/tree/main/skills), so tools
+  that install skills straight from a repository can use them without the
+  CLI.
+</Note>
