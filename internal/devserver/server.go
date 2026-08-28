@@ -18,12 +18,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/engine"
-	"github.com/smart-minds/keel/internal/runhub"
-	"github.com/smart-minds/keel/internal/secretbox"
-	"github.com/smart-minds/keel/internal/store/devdb"
-	"github.com/smart-minds/keel/internal/web"
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/engine"
+	"github.com/UcGeorge/keel/internal/runhub"
+	"github.com/UcGeorge/keel/internal/secretbox"
+	"github.com/UcGeorge/keel/internal/store/devdb"
+	"github.com/UcGeorge/keel/internal/web"
 )
 
 // Server is the keel dev application.

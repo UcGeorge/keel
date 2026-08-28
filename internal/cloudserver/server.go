@@ -19,14 +19,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/engine"
-	"github.com/smart-minds/keel/internal/githubapp"
-	"github.com/smart-minds/keel/internal/gitutil"
-	"github.com/smart-minds/keel/internal/runhub"
-	"github.com/smart-minds/keel/internal/secretbox"
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/web"
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/engine"
+	"github.com/UcGeorge/keel/internal/githubapp"
+	"github.com/UcGeorge/keel/internal/gitutil"
+	"github.com/UcGeorge/keel/internal/runhub"
+	"github.com/UcGeorge/keel/internal/secretbox"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/web"
 )
 
 // Config is the cloud server configuration, read from the environment.

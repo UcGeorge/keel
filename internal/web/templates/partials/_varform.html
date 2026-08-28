@@ -19,6 +19,7 @@
       <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg>
       <span class="text-sm font-semibold text-slate-900">{{.Label}}</span>
       <span class="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500">{{.Count}} variable{{if ne .Count 1}}s{{end}}</span>
+      {{if .RequiredCount}}<span class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-600 ring-1 ring-red-600/10">{{.RequiredCount}} required</span>{{end}}
     </summary>
     <div class="space-y-6 border-t border-slate-200 bg-white px-4 py-5 sm:px-5">
       {{with .Description}}<div class="prose-sm -mt-1 text-sm text-slate-500">{{markdown .}}</div>{{end}}
@@ -64,7 +65,7 @@
   {{with $v.When}}data-when-var="{{.Var}}" data-when-op="{{.Op}}" data-when-value="{{if eq .Op "in"}}{{json .Values}}{{else}}{{.Value}}{{end}}" data-when-want="{{.Want}}"{{end}}
   class="{{if not $f.Active}}opacity-50{{end}}">
   <div class="flex flex-wrap items-center gap-2">
-    <label for="var-{{$v.Name}}" class="block text-sm font-medium text-slate-900">{{$v.EffectiveLabel}}</label>
+    <label for="var-{{$v.Name}}" class="block text-sm font-medium text-slate-900">{{$v.EffectiveLabel}}{{if $v.NeedsInput}}<span class="ml-0.5 font-semibold text-red-500" title="Required — no default">*</span>{{end}}</label>
     <code class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">{{$v.Name}}</code>
     {{if $v.Secret}}
     <span class="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-violet-600/20">
@@ -94,9 +95,15 @@
     </select>
 
     {{else if eq $v.Type "multiline"}}
+    {{if $v.Secret}}
+    <textarea id="var-{{$v.Name}}" name="{{$v.Name}}" rows="4" {{if $off}}disabled{{end}} autocomplete="off" spellcheck="false" data-hassaved="{{$f.HasSaved}}"
+      placeholder="{{if $f.HasSaved}}•••••••• (saved — leave blank to keep){{else}}{{$v.Placeholder}}{{end}}"
+      class="secret-mask block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500"></textarea>
+    {{else}}
     <textarea id="var-{{$v.Name}}" name="{{$v.Name}}" rows="4" {{if $off}}disabled{{end}}
       placeholder="{{$v.Placeholder}}"
       class="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-500">{{$f.Value}}</textarea>
+    {{end}}
 
     {{else if $v.Secret}}
     <input type="password" id="var-{{$v.Name}}" name="{{$v.Name}}" value="" autocomplete="new-password" {{if $off}}disabled{{end}} data-hassaved="{{$f.HasSaved}}"
@@ -114,6 +121,12 @@
 
   {{with $v.When}}<p class="kv-when-hint mt-1.5 text-xs text-amber-700 {{if $f.Active}}hidden{{end}}">Requires {{.Describe}}</p>{{end}}
   {{with $f.Error}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
+  {{with $v.ConstraintHints}}
+  <p class="mt-1.5 flex items-start gap-1 text-xs text-slate-500">
+    <svg class="mt-px h-3.5 w-3.5 shrink-0 text-slate-400" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M15 8A7 7 0 1 1 1 8a7 7 0 0 1 14 0ZM9 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM6.75 8a.75.75 0 0 0 0 1.5h.5v1.75a.75.75 0 0 0 1.5 0V8.75A.75.75 0 0 0 8 8H6.75Z" clip-rule="evenodd"/></svg>
+    <span>Expects {{range $i, $h := .}}{{if $i}} · {{end}}{{$h}}{{end}}</span>
+  </p>
+  {{end}}
   {{with $v.Description}}<div class="prose-sm mt-1.5 text-sm text-slate-500">{{markdown .}}</div>{{end}}
   {{if and $v.Default (not $v.Secret)}}<p class="mt-1 text-xs text-slate-400">Default: <code class="rounded bg-slate-100 px-1 py-0.5">{{$v.Default}}</code></p>{{end}}
 </div>

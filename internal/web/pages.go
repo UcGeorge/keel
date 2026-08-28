@@ -33,6 +33,7 @@ type PageDeployment struct {
 	Base
 	Dep          *DeploymentVM
 	CanConfigure bool
+	CanDeploy    bool
 	ShowAuto     bool
 	TargetForm   *TargetFormVM
 	BackURL      string

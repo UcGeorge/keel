@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/devserver"
-	"github.com/smart-minds/keel/internal/manifest"
-	"github.com/smart-minds/keel/internal/version"
-	"github.com/smart-minds/keel/internal/web"
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/devserver"
+	"github.com/UcGeorge/keel/internal/manifest"
+	"github.com/UcGeorge/keel/internal/version"
+	"github.com/UcGeorge/keel/internal/web"
 	"github.com/spf13/cobra"
 )
 

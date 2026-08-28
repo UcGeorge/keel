@@ -3,7 +3,6 @@
 /dist/
 
 # Local Keel state (created by `keel dev`) and compose data dir
-.keel/
 keel-data/
 
 # Terraform (state lives in GCS; runs use TF_DATA_DIR=/tmp)

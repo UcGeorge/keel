@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/version"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/version"
 )
 
 const e2eYAML = `version: 1

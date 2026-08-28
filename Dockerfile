@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 ARG VERSION=dev
 RUN go build -trimpath \
-    -ldflags "-X github.com/smart-minds/keel/internal/version.Version=${VERSION}" \
+    -ldflags "-X github.com/UcGeorge/keel/internal/version.Version=${VERSION}" \
     -o /out/keel-cloud ./cmd/keel-cloud
 
 FROM alpine:3.20

@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/manifest"
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/manifest"
 )
 
 // ManifestRequest carries everything the shared manifest-builder UI needs.

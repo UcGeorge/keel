@@ -1,5 +1,5 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS  = -X github.com/smart-minds/keel/internal/version.Version=$(VERSION)
+LDFLAGS  = -X github.com/UcGeorge/keel/internal/version.Version=$(VERSION)
 
 .PHONY: build build-keel build-cloud css sqlc test test-short vet fmt run-cloud embed clean
 

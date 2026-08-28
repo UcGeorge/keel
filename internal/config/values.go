@@ -73,6 +73,47 @@ func CheckValue(v *Variable, value string) string {
 	return ""
 }
 
+// ConstraintHints renders a variable's validation constraints as short
+// human-readable phrases for form hints, phrased to match the errors
+// CheckValue produces. Types whose widget already constrains the value
+// (select, boolean) yield nothing.
+func (v *Variable) ConstraintHints() []string {
+	var hints []string
+	switch v.Type {
+	case VarNumber:
+		switch {
+		case v.Validation.Min != nil && v.Validation.Max != nil:
+			hints = append(hints, fmt.Sprintf("a number between %s and %s", formatNum(*v.Validation.Min), formatNum(*v.Validation.Max)))
+		case v.Validation.Min != nil:
+			hints = append(hints, "a number ≥ "+formatNum(*v.Validation.Min))
+		case v.Validation.Max != nil:
+			hints = append(hints, "a number ≤ "+formatNum(*v.Validation.Max))
+		}
+	case VarEmail:
+		hints = append(hints, "a valid email address")
+	case VarURL:
+		hints = append(hints, "a URL including the scheme (e.g. https://example.com)")
+	}
+	if isTextual(v.Type) {
+		switch {
+		case v.Validation.MinLength != nil && v.Validation.MaxLength != nil:
+			hints = append(hints, fmt.Sprintf("%d–%d characters", *v.Validation.MinLength, *v.Validation.MaxLength))
+		case v.Validation.MinLength != nil:
+			hints = append(hints, fmt.Sprintf("at least %d characters", *v.Validation.MinLength))
+		case v.Validation.MaxLength != nil:
+			hints = append(hints, fmt.Sprintf("at most %d characters", *v.Validation.MaxLength))
+		}
+	}
+	if v.Validation.Pattern != "" && (isTextual(v.Type) || v.Type == VarNumber) {
+		if v.Validation.Message != "" {
+			hints = append(hints, v.Validation.Message)
+		} else {
+			hints = append(hints, "matching pattern "+v.Validation.Pattern)
+		}
+	}
+	return hints
+}
+
 // CompiledPattern returns the compiled validation pattern, compiling it on
 // first use for variables constructed outside of Parse.
 func (v *Variable) CompiledPattern() *regexp.Regexp {

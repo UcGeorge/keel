@@ -3,8 +3,8 @@ package devserver
 import (
 	"net/http"
 
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/web"
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/web"
 )
 
 type manifestReq struct {

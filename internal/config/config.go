@@ -293,6 +293,13 @@ type Variable struct {
 	When *Condition
 }
 
+// NeedsInput reports whether the variable must be given a value by the
+// user: it is required and has no default to fall back to. Drives the
+// required markers in forms.
+func (v *Variable) NeedsInput() bool {
+	return v.Required && v.Default == ""
+}
+
 // EffectiveFlex returns the flex share, defaulting to 1.
 func (v *Variable) EffectiveFlex() float64 {
 	if v.Flex > 0 {

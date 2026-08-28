@@ -32,7 +32,7 @@ KEEL_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$KEEL_REPO"
 
 VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
-LDFLAGS="-s -w -X github.com/smart-minds/keel/internal/version.Version=${VERSION}"
+LDFLAGS="-s -w -X github.com/UcGeorge/keel/internal/version.Version=${VERSION}"
 PLATFORMS="darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64"
 
 BIN_DIR="$TARGET_DIR/.keel/bin"

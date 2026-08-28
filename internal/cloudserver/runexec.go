@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/engine"
+	"github.com/UcGeorge/keel/internal/gitutil"
+	"github.com/UcGeorge/keel/internal/runhub"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/engine"
-	"github.com/smart-minds/keel/internal/gitutil"
-	"github.com/smart-minds/keel/internal/runhub"
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/web"
 )
 
 // handleDeploy validates the target and starts a run.
@@ -58,16 +58,16 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request, rc *repoCt
 		if len(msgs) == 0 {
 			dstate = &deployFormState{Values: deployVals, Errors: deployErrors}
 		}
-		s.renderTarget(w, r, rc, d, t, nil, msgs, dstate, http.StatusUnprocessableEntity)
+		s.renderTarget(w, r, rc, d, t, nil, nil, msgs, dstate, http.StatusUnprocessableEntity)
 		return
 	}
 	values = merged
 	if active, err := s.Q.CountActiveRunsForTarget(r.Context(), nullUUID(t.ID)); err == nil && active > 0 {
-		s.renderTarget(w, r, rc, d, t, nil, []string{"A run is already in progress for this target — wait for it to finish or cancel it."}, nil, http.StatusConflict)
+		s.renderTarget(w, r, rc, d, t, nil, nil, []string{"A run is already in progress for this target — wait for it to finish or cancel it."}, nil, http.StatusConflict)
 		return
 	}
 	if err := s.Runner.CheckDocker(r.Context()); err != nil {
-		s.renderTarget(w, r, rc, d, t, nil, []string{err.Error()}, nil, http.StatusServiceUnavailable)
+		s.renderTarget(w, r, rc, d, t, nil, nil, []string{err.Error()}, nil, http.StatusServiceUnavailable)
 		return
 	}
 

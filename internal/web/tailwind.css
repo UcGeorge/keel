@@ -148,3 +148,8 @@
 .manifest-doc hr { border: 0; border-top: 1px solid var(--color-slate-200); margin: 1.5rem 0; }
 .manifest-doc strong { color: var(--color-slate-900); }
 .manifest-doc em { color: var(--color-slate-500); }
+
+/* Multi-line secret inputs: mask typed characters like a password field.
+   Supported by all current engines; where unsupported the text shows plain,
+   which only weakens shoulder-surfing protection, never functionality. */
+textarea.secret-mask { -webkit-text-security: disc; }

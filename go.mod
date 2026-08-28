@@ -1,4 +1,4 @@
-module github.com/smart-minds/keel
+module github.com/UcGeorge/keel
 
 go 1.26.3
 

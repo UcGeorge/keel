@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/web"
 )
 
 // repoDep resolves the deployment named in the path from the repo's synced
@@ -170,6 +170,7 @@ func (s *Server) renderDeployment(w http.ResponseWriter, r *http.Request, rc *re
 		Base:         s.base(w, r, rc.Sess, rc.orgCtx, d.Name),
 		Dep:          vm,
 		CanConfigure: rc.canConfigure(),
+		CanDeploy:    rc.canDeploy(),
 		ShowAuto:     rc.Repo.Provider == "github_app",
 		TargetForm:   form,
 		BackURL:      rc.repoURL(),
@@ -224,7 +225,13 @@ func (s *Server) handleTarget(w http.ResponseWriter, r *http.Request, rc *repoCt
 	if t == nil {
 		return
 	}
-	s.renderTarget(w, r, rc, d, t, nil, nil, nil, http.StatusOK)
+	// ?deploy=1 (the deployment page's Deploy shortcut) opens the deploy
+	// modal immediately when there are deploy-time variables to ask for.
+	var dstate *deployFormState
+	if r.URL.Query().Get("deploy") == "1" && len(d.DeployTimeVariables()) > 0 {
+		dstate = &deployFormState{}
+	}
+	s.renderTarget(w, r, rc, d, t, nil, nil, nil, dstate, http.StatusOK)
 }
 
 // deployFormState carries the deploy modal's submitted values and errors
@@ -234,14 +241,16 @@ type deployFormState struct {
 	Errors map[string]string
 }
 
-func (s *Server) renderTarget(w http.ResponseWriter, r *http.Request, rc *repoCtx, d *config.Deployment, t *clouddb.Target, fieldErrors map[string]string, problems []string, dstate *deployFormState, code int) {
+func (s *Server) renderTarget(w http.ResponseWriter, r *http.Request, rc *repoCtx, d *config.Deployment, t *clouddb.Target, fieldErrors map[string]string, submitted map[string]string, problems []string, dstate *deployFormState, code int) {
 	values, savedSecrets, err := s.targetValues(r.Context(), d, t.ID)
 	if err != nil {
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not decrypt saved values: "+err.Error())
 		return
 	}
 	tURL := s.targetURL(rc, d.Name, t.Name)
-	fields := web.BuildVarFields(d, d.ConfigVariables(), values, savedSecrets, fieldErrors)
+	// After a failed save, submitted overlays the stored values so nothing
+	// the user typed is lost — only the invalid fields need correcting.
+	fields := web.BuildVarFields(d, d.ConfigVariables(), mergedValues(values, submitted), savedSecrets, fieldErrors)
 	deployValues := values
 	deployErrors := map[string]string{}
 	if dstate != nil {
@@ -336,6 +345,7 @@ func (s *Server) handleValuesSave(w http.ResponseWriter, r *http.Request, rc *re
 	}
 
 	fieldErrors := map[string]string{}
+	submitted := map[string]string{}
 	type pending struct {
 		name   string
 		value  string
@@ -351,10 +361,13 @@ func (s *Server) handleValuesSave(w http.ResponseWriter, r *http.Request, rc *re
 		if v.Type != config.VarMultiline {
 			value = strings.TrimSpace(value)
 		}
+		if !v.Secret {
+			submitted[v.Name] = value
+		}
+		if v.Secret && strings.TrimSpace(value) == "" {
+			continue // blank secret means "keep the saved one"
+		}
 		if value == "" {
-			if v.Secret {
-				continue // blank secret means "keep the saved one"
-			}
 			updates = append(updates, pending{name: v.Name})
 			continue
 		}
@@ -363,10 +376,6 @@ func (s *Server) handleValuesSave(w http.ResponseWriter, r *http.Request, rc *re
 			continue
 		}
 		updates = append(updates, pending{name: v.Name, value: value, secret: v.Secret})
-	}
-	if len(fieldErrors) > 0 {
-		s.renderTarget(w, r, rc, d, t, fieldErrors, nil, nil, http.StatusUnprocessableEntity)
-		return
 	}
 	for _, u := range updates {
 		if u.value == "" {
@@ -388,6 +397,12 @@ func (s *Server) handleValuesSave(w http.ResponseWriter, r *http.Request, rc *re
 			s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not save values")
 			return
 		}
+	}
+	// Valid values are persisted even when some fields fail — the re-rendered
+	// form keeps everything the user typed and flags only the invalid fields.
+	if len(fieldErrors) > 0 {
+		s.renderTarget(w, r, rc, d, t, fieldErrors, submitted, nil, nil, http.StatusUnprocessableEntity)
+		return
 	}
 	web.SetFlash(w, "success", "Variables saved.")
 	http.Redirect(w, r, s.targetURL(rc, d.Name, t.Name), http.StatusSeeOther)

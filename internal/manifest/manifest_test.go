@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/smart-minds/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/config"
 )
 
 const yml = `

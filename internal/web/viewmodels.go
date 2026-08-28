@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/smart-minds/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/config"
 )
 
 // DeploymentVM is a deployment as the templates see it, identical in both
@@ -21,6 +21,17 @@ type DeploymentVM struct {
 	Outputs         []*config.Output
 	Targets         []TargetVM
 	URLBase         string
+}
+
+// HasDeployTimeVars reports whether any variable is asked for at deploy
+// time — deploying such a deployment needs the deploy modal.
+func (d *DeploymentVM) HasDeployTimeVars() bool {
+	for _, v := range d.Variables {
+		if v.DeployTime {
+			return true
+		}
+	}
+	return false
 }
 
 // TargetVM is a deployment target row.
@@ -72,6 +83,9 @@ type VarGroupVM struct {
 	Collapsed   bool
 	Rows        []VarRowVM
 	Count       int
+	// RequiredCount counts the group's fields that must be filled in
+	// (required, no default), so collapsed groups stay scannable.
+	RequiredCount int
 }
 
 // VarLayoutVM arranges a deployment's variable fields into the layout
@@ -275,19 +289,23 @@ func BuildVarLayout(d *config.Deployment, fields []VarFieldVM) VarLayoutVM {
 			g = *def
 		}
 		collapsed := g.Collapsed
+		required := 0
 		for _, f := range byGroup[id] {
 			if f.Error != "" {
 				collapsed = false // never hide a validation error
-				break
+			}
+			if f.V.NeedsInput() {
+				required++
 			}
 		}
 		layout.Groups = append(layout.Groups, VarGroupVM{
-			ID:          id,
-			Label:       g.EffectiveLabel(),
-			Description: g.Description,
-			Collapsed:   collapsed,
-			Rows:        buildVarRows(byGroup[id]),
-			Count:       len(byGroup[id]),
+			ID:            id,
+			Label:         g.EffectiveLabel(),
+			Description:   g.Description,
+			Collapsed:     collapsed,
+			Rows:          buildVarRows(byGroup[id]),
+			Count:         len(byGroup[id]),
+			RequiredCount: required,
 		})
 	}
 	return layout

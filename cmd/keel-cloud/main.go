@@ -26,8 +26,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/smart-minds/keel/internal/cloudserver"
-	"github.com/smart-minds/keel/internal/version"
+	"github.com/UcGeorge/keel/internal/cloudserver"
+	"github.com/UcGeorge/keel/internal/version"
 )
 
 func main() {

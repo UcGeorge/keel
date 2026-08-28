@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smart-minds/keel/internal/auth"
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/web"
+	"github.com/UcGeorge/keel/internal/auth"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/web"
 )
 
 const sessionTTL = 30 * 24 * time.Hour

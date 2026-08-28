@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/engine"
+	"github.com/UcGeorge/keel/internal/runhub"
+	"github.com/UcGeorge/keel/internal/store/devdb"
+	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/engine"
-	"github.com/smart-minds/keel/internal/runhub"
-	"github.com/smart-minds/keel/internal/store/devdb"
-	"github.com/smart-minds/keel/internal/web"
 )
 
 func osReadFile(path string) ([]byte, error) { return os.ReadFile(path) }
@@ -57,11 +57,11 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		if len(msgs) == 0 {
 			dstate = &deployFormState{Values: deployVals, Errors: deployErrors}
 		}
-		s.renderTarget(w, r, d, t, nil, msgs, dstate, http.StatusUnprocessableEntity)
+		s.renderTarget(w, r, d, t, nil, nil, msgs, dstate, http.StatusUnprocessableEntity)
 		return
 	}
 	if err := s.Runner.CheckDocker(r.Context()); err != nil {
-		s.renderTarget(w, r, d, t, nil, []string{err.Error()}, nil, http.StatusServiceUnavailable)
+		s.renderTarget(w, r, d, t, nil, nil, []string{err.Error()}, nil, http.StatusServiceUnavailable)
 		return
 	}
 	values = merged

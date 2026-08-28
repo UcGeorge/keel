@@ -18,39 +18,6 @@
   </div>
   {{end}}
 
-  <section class="rounded-lg border border-slate-200 bg-white">
-    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-      <h2 class="text-sm font-semibold text-slate-900">Variables</h2>
-      <a href="{{.ManifestURL}}" class="text-sm font-medium text-teal-700 hover:text-teal-800">Export variable manifest →</a>
-    </div>
-    <div class="px-5 py-5">
-      {{if .Fields}}
-      <form method="post" action="{{.SaveURL}}" id="config-var-form" {{if not .CanConfigure}}data-readonly{{end}}>
-        {{template "csrf_field" .CSRF}}
-        {{template "var_fields" dict "Layout" .Layout "ReadOnly" (not .CanConfigure) "Preselect" false}}
-        {{if .CanConfigure}}
-        <div class="mt-6 flex items-center gap-3 border-t border-slate-100 pt-5">
-          <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Save variables</button>
-          <span class="text-xs text-slate-400">Secrets are stored encrypted. Leave a saved secret blank to keep it.</span>
-        </div>
-        {{end}}
-      </form>
-      {{else if not .DeployFields}}
-      <p class="text-sm text-slate-500">This deployment declares no variables — it can be deployed as is.</p>
-      {{else}}
-      <p class="text-sm text-slate-500">Every variable of this deployment is provided at deploy time.</p>
-      {{end}}
-      {{if .DeployFields}}
-      <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-        <span class="text-xs font-medium text-slate-500">Asked when a deploy starts:</span>
-        {{range .DeployFields}}
-        <code class="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-600/20">{{.V.Name}}</code>
-        {{end}}
-      </div>
-      {{end}}
-    </div>
-  </section>
-
   <section class="rounded-lg border border-slate-200 bg-white px-5 py-4">
     <div class="flex flex-wrap items-center gap-4">
       <div>
@@ -58,7 +25,15 @@
         <p class="mt-0.5 text-sm text-slate-500">Builds the environment image and runs the deployment steps against this target's variables.</p>
       </div>
       {{if .CanDeploy}}
-      {{if .DeployFields}}
+      {{if not .Target.Ready}}
+      <div class="ml-auto text-right">
+        <button type="button" disabled class="inline-flex cursor-not-allowed items-center gap-2 rounded-md bg-slate-300 px-5 py-2.5 text-sm font-semibold text-white shadow-sm">
+          <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg>
+          Deploy now
+        </button>
+        <p class="mt-1.5 text-xs text-amber-700">Needs {{.Target.Missing}} more value{{if ne .Target.Missing 1}}s{{end}} — set the variables below.</p>
+      </div>
+      {{else if .DeployFields}}
       <button type="button" id="deploy-open" class="ml-auto inline-flex items-center gap-2 rounded-md bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">
         <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg>
         Deploy now
@@ -127,6 +102,40 @@
   <section>
     <h2 class="text-base font-semibold text-slate-900">Run history</h2>
     <div class="mt-3">{{template "runs_table" .Runs}}</div>
+  </section>
+
+  <section class="rounded-lg border border-slate-200 bg-white">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-100 px-5 py-3">
+      <h2 class="text-sm font-semibold text-slate-900">Variables</h2>
+      <span class="text-xs text-slate-400"><span class="font-semibold text-red-500">*</span> required — everything else is optional or has a default</span>
+      <a href="{{.ManifestURL}}" class="ml-auto text-sm font-medium text-teal-700 hover:text-teal-800">Export variable manifest →</a>
+    </div>
+    <div class="px-5 py-5">
+      {{if .Fields}}
+      <form method="post" action="{{.SaveURL}}" id="config-var-form" {{if not .CanConfigure}}data-readonly{{end}}>
+        {{template "csrf_field" .CSRF}}
+        {{template "var_fields" dict "Layout" .Layout "ReadOnly" (not .CanConfigure) "Preselect" false}}
+        {{if .CanConfigure}}
+        <div class="mt-6 flex items-center gap-3 border-t border-slate-100 pt-5">
+          <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Save variables</button>
+          <span class="text-xs text-slate-400">Secrets are stored encrypted. Leave a saved secret blank to keep it.</span>
+        </div>
+        {{end}}
+      </form>
+      {{else if not .DeployFields}}
+      <p class="text-sm text-slate-500">This deployment declares no variables — it can be deployed as is.</p>
+      {{else}}
+      <p class="text-sm text-slate-500">Every variable of this deployment is provided at deploy time.</p>
+      {{end}}
+      {{if .DeployFields}}
+      <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+        <span class="text-xs font-medium text-slate-500">Asked when a deploy starts:</span>
+        {{range .DeployFields}}
+        <code class="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-600/20">{{.V.Name}}</code>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
   </section>
 
   {{template "varform_script"}}

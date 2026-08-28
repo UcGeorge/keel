@@ -14,12 +14,12 @@ import (
 
 	"encoding/json"
 
+	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/githubapp"
+	"github.com/UcGeorge/keel/internal/gitutil"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/web"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/smart-minds/keel/internal/config"
-	"github.com/smart-minds/keel/internal/githubapp"
-	"github.com/smart-minds/keel/internal/gitutil"
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/web"
 )
 
 // repoVM converts a stored repo to its view model.

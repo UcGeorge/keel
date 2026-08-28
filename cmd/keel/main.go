@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/smart-minds/keel/internal/version"
+	"github.com/UcGeorge/keel/internal/version"
 	"github.com/spf13/cobra"
 )
 

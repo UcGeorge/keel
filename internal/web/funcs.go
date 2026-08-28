@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smart-minds/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/config"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 )

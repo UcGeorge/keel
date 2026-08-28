@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/UcGeorge/keel/internal/auth"
+	"github.com/UcGeorge/keel/internal/store/clouddb"
+	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
-	"github.com/smart-minds/keel/internal/auth"
-	"github.com/smart-minds/keel/internal/store/clouddb"
-	"github.com/smart-minds/keel/internal/web"
 )
 
 func nullUUID(id uuid.UUID) uuid.NullUUID { return uuid.NullUUID{UUID: id, Valid: true} }

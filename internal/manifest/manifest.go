@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/smart-minds/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/config"
 )
 
 // Options control manifest generation.
