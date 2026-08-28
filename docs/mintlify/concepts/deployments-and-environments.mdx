@@ -1,0 +1,121 @@
+---
+title: "Deployments and environments"
+description: "A deployment names the image its steps run in, the steps themselves, and the variables they need. Here is how those pieces behave."
+icon: "layer-group"
+---
+
+## Deployments
+
+A deployment is one top-level entry under `deployments:` in `keel.yaml`, the
+way a service is one entry in a compose file. A repository can declare as
+many as it needs — one per cloud, per environment, or per kind of operation:
+
+```yaml keel.yaml
+version: 1
+
+deployments:
+  aws-production:
+    description: Deploy the API to AWS ECS.
+    environment: {dockerfile: deploy/aws.Dockerfile}
+    steps: [...]
+  gcp-production:
+    description: Deploy the API to Google Cloud Run.
+    environment: {dockerfile: deploy/gcp.Dockerfile}
+    steps: [...]
+  database-migrate:
+    description: Run pending migrations against a target's database.
+    environment: {dockerfile: deploy/aws.Dockerfile}
+    steps: [...]
+```
+
+Names are lowercase DNS-label style — letters, digits, and hyphens, at most
+63 characters. The name shows up in URLs, in the UI, and inside the run as
+`KEEL_DEPLOYMENT`.
+
+Two optional fields describe a deployment to the people using it:
+
+- `description` — one line of plain text on deployment cards, in lists, and
+  at the top of generated manifests.
+- `long_description` — Markdown, rendered on the deployment's own page. Use
+  it for what the deployment does, what it touches, and what to check
+  afterwards.
+
+## Environments
+
+Every deployment names a Dockerfile:
+
+```yaml
+environment:
+  dockerfile: deploy/aws.Dockerfile   # required, relative to the repository root
+  context: .                          # build context, default "."
+```
+
+That image is *where the steps run*. Install every CLI and tool the steps
+need into it — `awscli`, `gcloud`, `terraform`, `kubectl`, `helm`, language
+runtimes for your own scripts. The people deploying never install any of it.
+
+Several deployments can share one Dockerfile, or each can have its own. Keel
+builds the image at the start of every run; stable image tags keep Docker's
+layer cache effective, so a rebuild with no changes takes seconds.
+
+<Tip>
+  Base the image on the vendor's own CLI image when one exists —
+  `amazon/aws-cli`, `gcr.io/google.com/cloudsdktool/google-cloud-cli:slim`,
+  `mcr.microsoft.com/azure-cli` — and add the rest on top. See
+  [Environment images](/guides/environment-images) for patterns.
+</Tip>
+
+The Dockerfile path and the context must be relative paths inside the
+repository; `../` and absolute paths are rejected by validation.
+
+## Steps
+
+Steps are the deployment's procedure, in order:
+
+```yaml
+steps:
+  - name: Authenticate
+    run: |
+      printf '%s' "$GCP_SERVICE_ACCOUNT_KEY" > /tmp/sa.json
+      gcloud auth activate-service-account --key-file=/tmp/sa.json
+      gcloud config set project "$GCP_PROJECT_ID"
+  - name: Deploy
+    run: ./deploy/gcp/deploy.sh
+```
+
+Each step's `run` is a shell script executed with `/bin/sh` inside the
+environment container. What a step can rely on:
+
+- The repository is mounted at `/workspace`, which is the working directory.
+- Every active variable is exported as an environment variable, plus
+  `KEEL_DEPLOYMENT`, `KEEL_TARGET`, and `KEEL_RUN_ID`.
+- Each step runs in its own subshell, so `cd`, `set -x`, and other shell
+  state do not leak into the next step.
+- `export`ed variables *do* carry forward to later steps, and to output
+  capture at the end.
+- A non-zero exit fails the run. Later steps are marked skipped.
+
+The full contract is in the [run environment reference](/reference/run-environment).
+
+### Authentication is a step
+
+Keel has no "sign in with AWS" button, and that is deliberate: for automated
+deploys the right credential is a service account or an access key that the
+target stores as a secret variable. Write the login as the first step —
+`aws configure set …`, `gcloud auth activate-service-account …`,
+`az login --service-principal …` — and the rest of the steps work as if a
+person had logged in.
+
+### Keep the logic in the repository
+
+A `run` block can hold any amount of shell, but the maintainable pattern is a
+short `run` that calls a script versioned next to the code
+(`./deploy/release.sh`). The script can be tested outside Keel, reviewed in
+pull requests, and reused by CI.
+
+## Where the repository comes from
+
+- **Keel Dev** mounts the directory you ran `keel dev` in. Steps see your
+  working tree, including uncommitted changes, and can write to it.
+- **Keel Cloud** makes a fresh shallow clone of the connected branch for each
+  run and deletes it afterwards. Steps see exactly what is committed.

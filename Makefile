@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -X github.com/UcGeorge/keel/internal/version.Version=$(VERSION)
 
-.PHONY: build build-keel build-cloud css sqlc test test-short vet fmt run-cloud embed clean
+.PHONY: build build-keel build-cloud css sqlc test test-short vet fmt run-cloud embed docs site clean
 
 ## build: compile both binaries into ./bin
 build: build-keel build-cloud
@@ -46,8 +46,16 @@ embed:
 	@test -n "$(DIR)" || (echo "DIR is required, e.g. make embed DIR=../my-project" && exit 1)
 	./scripts/embed.sh "$(DIR)"
 
+## docs: preview the documentation site at http://localhost:3000 (npm i -g mint once)
+docs:
+	cd docs/mintlify && mint dev
+
+## site: preview the landing page at http://localhost:8000
+site:
+	cd site && python3 -m http.server 8000
+
 clean:
-	rm -rf bin
+	rm -rf bin dist
 
 # >>> keel targets — managed by Keel; re-run `make embed` from the Keel repository to update >>>
 KEEL_ROOT := $(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST)))))

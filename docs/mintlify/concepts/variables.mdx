@@ -1,0 +1,121 @@
+---
+title: "Variables"
+description: "Variables are the inputs of a deployment — declared once with types, validation, and documentation, filled in per target, exported into every run."
+icon: "sliders"
+---
+
+Variables do three jobs at once. They are the **environment variables** the
+steps read, the **form fields** the UI renders, and the **entries** in the
+generated manifest that tells someone what to supply.
+
+```yaml
+variables:
+  AWS_ACCESS_KEY_ID:
+    label: AWS Access Key ID
+    secret: true
+    validation:
+      pattern: "AKIA[0-9A-Z]{16}"
+      message: Must look like AKIAXXXXXXXXXXXXXXXX
+    manifest:
+      why: Authenticates the deployment with your AWS account.
+      how: IAM → Users → Add user with programmatic access, attach the deploy policy.
+  AWS_REGION:
+    label: Region
+    type: select
+    default: us-east-1
+    options:
+      - {value: us-east-1, label: US East (N. Virginia)}
+      - {value: eu-west-1, label: Europe (Ireland)}
+  DESIRED_COUNT:
+    label: Service replicas
+    type: number
+    required: false
+    default: "2"
+    validation: {min: 1, max: 20}
+```
+
+Names are uppercase environment-variable style — `[A-Z][A-Z0-9_]*`. The
+`KEEL_` prefix is reserved for the metadata Keel injects into every run.
+
+## Required, optional, and defaults
+
+Variables are required unless `required: false`. A **default** satisfies a
+required variable without any input, and pre-fills the form.
+
+The form makes the distinction visible at a glance:
+
+- A red asterisk marks fields that **need input** — required, with no
+  default.
+- *optional* marks fields with `required: false`.
+- Fields with a default show neither; the default applies when left blank.
+
+Each collapsible group in a large form also shows how many of its fields
+still need input, so you never have to open every group to find out.
+
+How a value reaches the run follows from this: a variable resolves to its
+saved value, else its default. An optional variable with neither is not
+exported at all — read it as `${NAME:-}` in steps. Booleans are the
+exception: an unset boolean resolves to `false`.
+
+## Types
+
+The type decides the form control and the validation:
+
+| Type | Control | Validates |
+|---|---|---|
+| `text` (default) | text input | pattern, lengths |
+| `multiline` | textarea | pattern, lengths |
+| `number` | number input | numeric, `min` / `max` |
+| `email` | email input | address shape |
+| `url` | url input | scheme and host present |
+| `boolean` | true/false select | `true` or `false` |
+| `select` | dropdown | one of `options` |
+
+Details for each are in the [variable types reference](/reference/variable-types).
+
+## Validation
+
+`validation` adds constraints beyond the type: a regular expression the whole
+value must match (with a custom `message`), numeric bounds, and length
+bounds. The form shows the constraints under the field *before* you type, so
+nobody has to guess the format, and the same rules run again on save and on
+deploy. See the [validation reference](/reference/validation).
+
+## Secrets
+
+`secret: true` marks a value as sensitive. Secrets are encrypted at rest
+(AES-256-GCM), rendered as password fields that never echo the saved value,
+masked as `•••` wherever they appear in run logs, and never printed by
+`keel deploy`. A saved secret can be left blank on the form to keep it, or
+overwritten with a new value. Secrets cannot have defaults, and `boolean` and
+`select` variables cannot be secret. The [secrets guide](/guides/secrets)
+follows a value from form to log.
+
+## Deploy-time variables
+
+Most variables are configuration — set once per target and reused. A
+variable with `deploy_time: true` is asked for **every time a deploy starts**,
+in a modal, and applies to that run only. Use it for choices that change per
+run: an image tag, a plan-versus-apply switch, a destroy confirmation. See
+[Deploy-time and conditional variables](/guides/deploy-time-and-conditional-variables).
+
+## Conditional variables
+
+`when:` gates a variable on another variable's value. While the condition
+does not hold, the variable is inactive: disabled in the form (re-enabled
+live as values change), never required, and not exported into the run.
+Conditions chain and are validated for cycles and impossible comparisons.
+See the [conditions reference](/reference/conditions).
+
+## Layout
+
+With many variables, `groups`, `row`, and `flex` organize the form into
+collapsible sections and side-by-side fields. Without them, the form is one
+variable per line in document order. See [Organize large forms](/guides/organize-large-forms).
+
+## Documentation
+
+`label`, `description` (Markdown), `placeholder`, and the `manifest` block's
+`why` and `how` are what the person filling in the form — or reading the
+generated manifest — actually sees. Write them for that person. See
+[Variable manifests](/concepts/variable-manifests).

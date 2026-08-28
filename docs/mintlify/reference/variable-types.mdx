@@ -1,0 +1,83 @@
+---
+title: "Variable types"
+description: "The seven variable types, the form control each renders, how each is validated, and how each resolves into the run's environment."
+icon: "shapes"
+---
+
+| Type | Form control | Built-in validation | Extra `validation` keys |
+|---|---|---|---|
+| `text` | single-line text input | — | `pattern`, `min_length`, `max_length` |
+| `multiline` | textarea, monospace | — | `pattern`, `min_length`, `max_length` |
+| `number` | number input | must parse as a number | `min`, `max`, `pattern`, `min_length`, `max_length` |
+| `email` | email input | must be an address with a domain | `pattern`, `min_length`, `max_length` |
+| `url` | url input | must include a scheme and a host | `pattern`, `min_length`, `max_length` |
+| `boolean` | select: true / false | `true` or `false` | — |
+| `select` | dropdown | one of `options` | — |
+
+Every value is stored and exported as a string. The type governs the control,
+the validation, and — for booleans — the resolved value.
+
+## `text`
+
+The default. Single-line values are trimmed of surrounding whitespace on
+save.
+
+## `multiline`
+
+A textarea, four rows tall, rendered in a monospace face. Whitespace and
+newlines are preserved exactly, which makes it the right type for PEM keys,
+JSON credentials, and configuration snippets. A secret `multiline` field is
+masked while typing and shows a saved indicator like a single-line secret.
+
+## `number`
+
+The input accepts any decimal (`step="any"`). Values must parse as a number;
+`min` and `max` are inclusive bounds. The value is exported as the string
+that was typed, so `"2"` stays `2` and `"2.50"` stays `2.50`.
+
+## `email`
+
+Must parse as a mail address and have the shape `local@domain.tld`. Display
+names and bare local parts are rejected.
+
+## `url`
+
+Must parse with a scheme and a host: `https://example.com` passes,
+`example.com` does not.
+
+## `boolean`
+
+A dropdown with true and false. On resolution an unset boolean — no value,
+no default — becomes `false`, so steps can test `"$FLAG" = true` without
+worrying about an empty string. Booleans cannot be secret and take no
+`pattern`.
+
+## `select`
+
+```yaml
+type: select
+default: us-east-1
+options:
+  - us-east-1                                  # value and label
+  - value: eu-west-1
+    label: Europe (Ireland)                    # what the dropdown shows
+```
+
+`options` is required, and each value must be non-empty and unique. The
+dropdown's blank entry reads *— default: X —* when a default exists. Selects
+cannot be secret and take no `pattern`. A `when` condition comparing a
+select with `eq` or `in` must use values from its options.
+
+## Exposure rules
+
+How a variable becomes an environment variable, in order:
+
+1. Inactive variables (a `when` that does not hold) are not exported.
+2. A saved value wins; otherwise the default.
+3. A boolean with neither becomes `false`.
+4. An optional variable with neither is not exported.
+5. A required variable with neither never reaches a run — validation blocks
+   the deploy.
+
+See the [run environment reference](/reference/run-environment) for what
+else the container receives.

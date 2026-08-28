@@ -1,0 +1,84 @@
+---
+title: "Conditions"
+description: "The when clause: operators, effective values, chaining, and what an inactive variable means in the form, the manifest, and the run."
+icon: "code-branch"
+---
+
+```yaml
+DESTROY_MODE:
+  type: select
+  options: [destroy-all, destroy-data]
+  when: {var: ACTION, eq: destroy}
+```
+
+A condition is `var` plus exactly one operator.
+
+## Operators
+
+| Operator | Holds when the referenced value… |
+|---|---|
+| `eq: v` | equals `v` |
+| `ne: v` | does not equal `v` |
+| `in: [a, b]` | is one of the listed values |
+| `gt: n`, `gte: n`, `lt: n`, `lte: n` | compares numerically against `n` (both sides must parse as numbers) |
+| `set: true` | has any value |
+| `set: false` | is empty |
+
+Every operator except `set: false` is false when the referenced value is
+empty. Comparisons are string comparisons except the four numeric ones.
+
+## Effective values
+
+The referenced value is the variable's **effective** value: its saved (or
+submitted, or deploy-time) value, else its default. A select with
+`default: deploy` satisfies `eq: deploy` before anyone touches the form.
+
+For secrets, the form cannot see the saved value, so it treats a saved secret
+as *set* for `set` conditions; equality comparisons against a saved secret's
+contents are not possible from the browser and evaluate on the server with
+the real value.
+
+## Chaining
+
+The referenced variable may itself carry a `when`. Evaluation follows the
+chain: an **inactive** variable makes every condition that reads it false,
+so a whole branch deactivates together. Validation rejects cycles.
+
+```yaml
+ACTION:      {type: select, deploy_time: true, default: deploy, options: [deploy, destroy]}
+RUN_MODE:    {type: select, deploy_time: true, default: full, options: [full, plan],
+              when: {var: ACTION, eq: deploy}}
+PLAN_DETAIL: {type: boolean, deploy_time: true, required: false,
+              when: {var: RUN_MODE, eq: plan}}
+```
+
+With `ACTION = destroy`, `RUN_MODE` is inactive, and therefore
+`PLAN_DETAIL` is inactive too, even though nobody changed `RUN_MODE`.
+
+## What inactive means
+
+| Where | Behavior |
+|---|---|
+| Target form and deploy modal | The field is disabled and dimmed, with a hint *Requires ACTION = destroy*. It re-enables live as the referenced value changes, without a round trip. |
+| Readiness and validation | Never required; an existing value is neither validated nor counted. |
+| The run | Not exported at all. Read it as `${NAME:-}`. |
+| Manifest | Listed with *Only applies when …*. |
+
+Values typed into a field that later becomes inactive are kept, not
+deleted; they apply again when the condition holds.
+
+## Rules
+
+- A **configuration** variable cannot depend on a **deploy-time** variable,
+  because the deploy-time value does not exist while the saved form is
+  evaluated. Mark the dependent variable `deploy_time: true` as well.
+- A variable cannot depend on itself; `var` must name a declared variable.
+- `eq` and `in` operands against a `select` must be among its options —
+  otherwise the condition could never hold.
+- Numeric operators need numeric operands on both sides at evaluation time;
+  a non-numeric value makes the condition false.
+
+Human-readable forms of each condition — `ACTION = destroy`,
+`REPLICAS ≥ 2`, `DOMAIN is set`, `REGION is one of eu-west-1, eu-central-1`
+— appear in the form hint, on the deployment page's variable list, and in
+the manifest.

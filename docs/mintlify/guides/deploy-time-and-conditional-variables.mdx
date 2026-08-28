@@ -1,0 +1,124 @@
+---
+title: "Deploy-time and conditional variables"
+description: "Ask for a value on every deploy, and show fields only when they apply — the pattern behind plan/apply switches and destroy confirmations."
+icon: "code-branch"
+---
+
+Configuration variables are set once per target. Two features handle the
+values that are not like that.
+
+## Deploy-time variables
+
+`deploy_time: true` takes a variable out of the target's stored
+configuration. Instead, the UI asks for it in a modal **every time the
+Deploy button is pressed**, and the value applies to that run only.
+
+```yaml
+variables:
+  IMAGE_TAG:
+    label: Image tag
+    deploy_time: true
+    placeholder: "e.g. 2024.11.3 or a commit SHA"
+    validation: {pattern: "[A-Za-z0-9._-]+"}
+  RUN_MODE:
+    label: Mode
+    type: select
+    deploy_time: true
+    default: full
+    options:
+      - {value: full, label: "Full — provision, build, roll out"}
+      - {value: plan, label: "Plan — preview Terraform changes only"}
+```
+
+Everything else about the variable — type, validation, defaults, layout,
+manifest entry — works the same. Specifics:
+
+- The modal pre-fills defaults. A required deploy-time variable without a
+  value or default blocks the deploy with an inline error, and the modal
+  keeps what you typed.
+- Target readiness ignores deploy-time variables; a target is never "missing"
+  a value that is asked for at deploy time.
+- `keel deploy` passes them per run: `keel deploy prod -t acme --var RUN_MODE=plan`.
+  A required one that is missing is reported, with a reminder about `--var`.
+- Push-triggered auto-deploys in Keel Cloud use the defaults. A required
+  deploy-time variable without a default blocks auto-deploy with a clear
+  message, because there is nobody to ask.
+
+## Conditional variables
+
+`when:` gates a variable on another variable's value. While the condition
+does not hold the variable is **inactive**:
+
+- its form field is disabled, with a hint saying what it requires, and it is
+  re-enabled live as the referenced value changes;
+- it is never required;
+- it is not exported into the run at all — read it as `${NAME:-}`.
+
+```yaml
+variables:
+  ACTION:
+    type: select
+    deploy_time: true
+    default: deploy
+    options:
+      - {value: deploy, label: Deploy}
+      - {value: destroy, label: Destroy the infrastructure}
+  RUN_MODE:
+    type: select
+    deploy_time: true
+    default: full
+    options: [full, plan]
+    when: {var: ACTION, eq: deploy}
+  CONFIRM_DESTROY:
+    label: Type "destroy" to confirm
+    deploy_time: true
+    when: {var: ACTION, eq: destroy}
+    validation:
+      pattern: destroy
+      message: Type "destroy" to confirm.
+```
+
+With `ACTION` at its default, the modal shows **Mode** and hides the
+confirmation. Switch to *Destroy* and the confirmation field activates — and
+because it is required with no default, the deploy cannot start until
+`destroy` has been typed.
+
+A condition is `var` plus exactly one operator: `eq`, `ne`, `in`, `gt`,
+`gte`, `lt`, `lte`, or `set`. The referenced value is the variable's
+*effective* value, including its default. Conditions chain — `RUN_MODE` may
+depend on `ACTION`, and something else on `RUN_MODE` — and an inactive
+variable makes every condition reading it false, so a whole branch
+deactivates together. The [conditions reference](/reference/conditions) has
+the operator table and the validation rules.
+
+## Reading them in steps
+
+```yaml
+steps:
+  - name: Terraform
+    run: |
+      case "${ACTION:-deploy}" in
+        destroy)
+          terraform -chdir=infra destroy -auto-approve ;;
+        deploy)
+          if [ "${RUN_MODE:-full}" = "plan" ]; then
+            terraform -chdir=infra plan
+          else
+            terraform -chdir=infra apply -auto-approve
+          fi ;;
+      esac
+```
+
+Use `${NAME:-default}` for anything that might be inactive or optional, so
+`set -u`-style strictness in your scripts does not trip on an unset variable.
+
+## Rules to know
+
+- A configuration variable **cannot** depend on a deploy-time variable —
+  the deploy-time value only exists while a deploy starts, so the condition
+  could never be evaluated for the saved form. Mark the dependent variable
+  `deploy_time` too.
+- Validation rejects unknown references, self-references, dependency cycles,
+  `eq`/`in` operands that are not among a select's options, and numeric
+  operators with non-numeric operands.
+- Secrets can be deploy-time and conditional like any other variable.

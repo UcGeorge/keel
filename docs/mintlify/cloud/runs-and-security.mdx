@@ -1,0 +1,70 @@
+---
+title: "Runs and security"
+description: "How Keel Cloud executes a run on the host, what is encrypted, how sessions and webhooks are protected, and where the trust boundary lies."
+icon: "shield-halved"
+---
+
+## How a run executes
+
+1. A **fresh shallow clone** of the connected branch is made in
+   `KEEL_DATA_DIR/runs/<run-id>`; it is deleted when the run finishes.
+2. The **environment image** is built from the deployment's Dockerfile with
+   the clone as context. Images are tagged per repository and deployment
+   (`keel/cloud-<repo>-<deployment>`) so Docker's layer cache keeps repeat
+   builds fast.
+3. A **container** starts from that image with the clone mounted at
+   `/workspace` and the target's resolved variables exported. The steps
+   execute in order; the [run environment reference](/reference/run-environment)
+   describes the exact contract.
+4. **Logs** stream to the run page over server-sent events and are persisted
+   with secret values masked.
+5. On success, declared **outputs** are captured and stored — secret ones
+   encrypted.
+
+Constraints:
+
+- **One active run per target.** A second deploy while one is running is
+  refused with a message.
+- **Cancel** removes the container; the run is marked canceled.
+- **Runs interrupted by a restart** of `keel-cloud` are marked failed on
+  boot.
+- The container's network and resources are the host daemon's defaults;
+  Keel applies no additional sandboxing.
+
+## What is encrypted
+
+Variable values (secret or not), repository access tokens, and secret
+outputs are encrypted with AES-256-GCM under `KEEL_ENCRYPTION_KEY` before
+they reach PostgreSQL. Logs are stored with secret values already masked.
+
+## Authentication and sessions
+
+- Passwords are hashed with argon2id using current OWASP parameters.
+- Sessions are opaque 256-bit tokens; only a hash is stored. They expire
+  after 30 days and live in HttpOnly, SameSite=Lax cookies, marked Secure
+  when `KEEL_BASE_URL` starts with `https://`.
+- Every mutating request carries a per-session CSRF token; pre-sign-in forms
+  use a double-submit cookie.
+- GitHub webhooks are verified with HMAC-SHA256 over the webhook secret.
+
+## The trust boundary
+
+Deployment steps are **arbitrary code from the connected repository**,
+executed by Docker on the Keel Cloud host with the target's values in the
+environment and the Docker socket available to `keel-cloud` itself. In
+practice:
+
+- Anyone who can push to a connected branch can run code on the host and
+  read the values of every target of that repository. Connect repositories
+  you trust and protect their branches.
+- Members with the **configure** scope can change values; members with the
+  **deploy** scope can execute whatever the repository defines.
+- Treat the host as part of the deployment trust boundary: its disk holds
+  clones, its daemon runs the steps, its environment holds the encryption
+  key. Run it on infrastructure with the same care as the systems it
+  deploys to.
+
+## Operational endpoints
+
+`GET /healthz` returns `ok` when the database responds. There is no metrics
+endpoint; logs go to standard error in `key=value` form.

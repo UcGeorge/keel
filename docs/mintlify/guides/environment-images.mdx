@@ -1,0 +1,122 @@
+---
+title: "Environment images"
+description: "Patterns for the Dockerfile a deployment runs in: vendor CLI bases, pinned tools, caching, and what a step can and cannot do inside the container."
+icon: "box"
+---
+
+The environment image is the one thing every person running a deployment
+would otherwise have to install. Everything the steps call must be in it.
+
+## Starting points
+
+<Tabs>
+  <Tab title="AWS">
+    ```dockerfile deploy/aws.Dockerfile
+    FROM amazon/aws-cli:2.22.0
+    RUN yum install -y jq git && yum clean all
+    WORKDIR /workspace
+    ENTRYPOINT []
+    ```
+  </Tab>
+  <Tab title="Google Cloud">
+    ```dockerfile deploy/gcp.Dockerfile
+    FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    RUN apt-get update && apt-get install -y --no-install-recommends jq git \
+        && rm -rf /var/lib/apt/lists/*
+    ENV CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    WORKDIR /workspace
+    ```
+  </Tab>
+  <Tab title="Azure">
+    ```dockerfile deploy/azure.Dockerfile
+    FROM mcr.microsoft.com/azure-cli:2.67.0
+    RUN apk add --no-cache jq git
+    WORKDIR /workspace
+    ```
+  </Tab>
+  <Tab title="Terraform">
+    ```dockerfile deploy/terraform.Dockerfile
+    FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+    ARG TERRAFORM_VERSION=1.9.8
+    RUN apt-get update && apt-get install -y --no-install-recommends curl unzip git \
+        && rm -rf /var/lib/apt/lists/* \
+        && arch="$(dpkg --print-architecture)" \
+        && curl -fsSLo /tmp/terraform.zip \
+           "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${arch}.zip" \
+        && unzip -o /tmp/terraform.zip -d /usr/local/bin && rm /tmp/terraform.zip
+    ENV CLOUDSDK_CORE_DISABLE_PROMPTS=1
+    WORKDIR /workspace
+    ```
+  </Tab>
+  <Tab title="Kubernetes">
+    ```dockerfile deploy/k8s.Dockerfile
+    FROM alpine:3.20
+    ARG KUBECTL_VERSION=v1.31.2
+    ARG HELM_VERSION=v3.16.2
+    RUN apk add --no-cache curl bash git ca-certificates \
+        && arch="$(uname -m | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')" \
+        && curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${arch}/kubectl" \
+        && chmod +x /usr/local/bin/kubectl \
+        && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${arch}.tar.gz" \
+           | tar -xzO "linux-${arch}/helm" > /usr/local/bin/helm && chmod +x /usr/local/bin/helm
+    WORKDIR /workspace
+    ```
+  </Tab>
+</Tabs>
+
+## Rules of the container
+
+- **The repository is mounted at `/workspace`**, which is also the working
+  directory. Set `WORKDIR /workspace` so relative paths in steps behave.
+- **Steps run with `/bin/sh`.** Alpine's `sh` is BusyBox `ash`; install
+  `bash` if your scripts need it and put `#!/usr/bin/env bash` at the top.
+- **Reset the entrypoint** of images that ship with the CLI as `ENTRYPOINT`.
+  Keel starts the container with its own command; an entrypoint that wraps
+  every command in `aws` breaks that.
+- **Disable interactive prompts** — `CLOUDSDK_CORE_DISABLE_PROMPTS=1`,
+  `AWS_PAGER=""`, `DEBIAN_FRONTEND=noninteractive`. There is nobody at the
+  keyboard.
+- **There is no Docker daemon inside the container.** A step cannot
+  `docker build` or `docker push`. Use the cloud's remote builder (Cloud
+  Build, CodeBuild, ACR Tasks, Kaniko in a cluster) or build images in CI
+  and have the deployment reference a tag — pass it as a deploy-time
+  variable.
+- **The container is disposable.** Nothing written outside `/workspace`
+  survives the run. Nothing written inside `/workspace` is committed
+  anywhere; in Keel Cloud the clone is deleted, in Keel Dev it is your
+  working tree.
+
+## Build context and caching
+
+```yaml
+environment:
+  dockerfile: deploy/aws.Dockerfile
+  context: deploy        # default "."
+```
+
+The context is what `COPY` can see. Most environment images copy nothing
+from the repository, so a narrow context (`deploy`) keeps builds fast and
+avoids invalidating layers when application code changes. When you use the
+repository root, add a `.dockerignore` that excludes `.git`, `node_modules`,
+build output, and `.keel`.
+
+Keel tags the image per deployment — `keel/dev-<deployment>` in Keel Dev,
+`keel/cloud-<repo>-<deployment>` in Keel Cloud — so Docker's layer cache
+carries across runs. A Dockerfile that has not changed rebuilds in seconds.
+Order instructions from least to most frequently changing, as usual.
+
+## Multiple deployments, one image
+
+Deployments that need the same tools can share a Dockerfile; there is no
+requirement for one image per deployment. Deployments with different tools
+should have separate, smaller images rather than one image with everything.
+
+## Testing the image without Keel
+
+```console
+$ docker build -f deploy/aws.Dockerfile -t try-aws .
+$ docker run --rm -it -v "$PWD:/workspace" -w /workspace try-aws sh
+```
+
+This is close to what a run sees, minus the variables. It is the fastest way
+to debug a missing tool.

@@ -1,0 +1,70 @@
+---
+title: "Connect repositories"
+description: "Connect a repository by git URL or through the GitHub App, choose the branch Keel reads keel.yaml from, and keep it in sync."
+icon: "code-branch"
+---
+
+A connected repository is what Keel Cloud reads `keel.yaml` from and what it
+clones for every run. Connecting requires the owner or admin role.
+
+## By git URL
+
+Works with any host that serves git over HTTPS — GitHub, GitLab, Bitbucket,
+Gitea, a self-hosted server.
+
+1. Open the organization and choose **Connect a repository**.
+2. Enter a **name** (used in URLs), the **clone URL**, and the **branch**.
+3. For a private repository, add an **access token** with read access. It is
+   stored encrypted and used only to clone. A fine-grained GitHub token with
+   *Contents: read*, a GitLab project token with `read_repository`, or a
+   Bitbucket app password with repository read all work.
+4. **Connect.**
+
+## Through the GitHub App
+
+When the server has the [GitHub App](/cloud/github-app) configured, the
+connect page also lists the repositories the app is installed on. Pick one
+and a branch; clone authentication is automatic, and the repository becomes
+eligible for push-triggered deploys.
+
+## What happens on connect
+
+Keel clones the branch (shallow, single branch), looks for `keel.yaml` or
+`keel.yml` at the root, and validates it. The repository page then shows one
+of:
+
+| Status | Meaning |
+|---|---|
+| `pending` | The first sync has not completed. |
+| `ok` | Configuration found and valid; deployments are listed. |
+| `config_missing` | The branch has no `keel.yaml`. |
+| `config_invalid` | `keel.yaml` failed validation; every problem is listed with its path. |
+| `error` | The clone failed — wrong URL, bad token, unreachable host. The message says which. |
+
+A repository connects even when its configuration is missing or invalid, so
+the fix can be a commit rather than a reconnect.
+
+## Keeping it in sync
+
+- **Sync** on the repository page re-clones the branch and re-reads
+  `keel.yaml`.
+- With the GitHub App, every push to the connected branch syncs
+  automatically and then runs auto-deploy targets.
+- Targets and their values survive configuration changes. Targets are keyed
+  by deployment name, so a deployment removed from `keel.yaml` — or renamed —
+  hides its targets until the name is restored; their runs stay in the
+  repository's run history. A saved value for a variable that no longer
+  exists is reported as a problem so it never leaks into a run.
+
+## Repository settings
+
+**Settings** changes the name, clone URL, branch, and token. Disconnecting
+removes the repository, its targets, their values, and their runs from the
+organization; nothing in the git host is touched.
+
+## After connecting
+
+Open a deployment, create a target, fill in its variables, deploy — the
+[targets and runs](/concepts/targets-and-runs) model is the same as Keel
+Dev's. Targets have one extra setting in Keel Cloud with a GitHub App
+repository: **Deploy automatically on push**.

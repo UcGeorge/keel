@@ -1,0 +1,81 @@
+---
+title: "GitHub App"
+description: "Set up the optional GitHub App integration for a repository picker, automatic clone authentication, and push-triggered deploys."
+icon: "github"
+---
+
+The GitHub App is optional. Without it, repositories connect by URL and
+token and deploy on demand. With it, admins pick repositories from a list,
+cloning needs no token, and pushes to a connected branch can deploy.
+
+## Create the app
+
+<Steps>
+  <Step title="Register a new GitHub App">
+    GitHub → **Settings → Developer settings → GitHub Apps → New GitHub
+    App**. Any name; the *slug* GitHub derives from it is needed below.
+  </Step>
+  <Step title="Webhook">
+    Set the webhook URL to `<KEEL_BASE_URL>/webhooks/github` and choose a
+    strong webhook secret. Keep it for the configuration step.
+  </Step>
+  <Step title="Permissions">
+    Repository permissions: **Contents: Read-only** and **Metadata:
+    Read-only**. Nothing else.
+  </Step>
+  <Step title="Events">
+    Subscribe to **Push**, **Installation target**, and **Installation
+    repositories**.
+  </Step>
+  <Step title="Private key">
+    Generate a private key and download the `.pem`. Note the **App ID**
+    shown on the app's page.
+  </Step>
+</Steps>
+
+## Configure Keel Cloud
+
+```sh
+KEEL_GITHUB_APP_ID=123456
+KEEL_GITHUB_APP_SLUG=your-keel-app
+KEEL_GITHUB_PRIVATE_KEY_FILE=/etc/keel/github-app.pem   # or KEEL_GITHUB_PRIVATE_KEY with the inline PEM
+KEEL_GITHUB_WEBHOOK_SECRET=…
+```
+
+Restart `keel-cloud`; the log line *GitHub App integration enabled* confirms
+it. Setting an app ID without a key or without a webhook secret is a startup
+error, not a silent fallback.
+
+## Install it
+
+Install the app on the GitHub account or organization that owns your
+repositories, choosing the repositories it may see. The installation
+registers itself with Keel through the webhook, and those repositories
+appear under **From GitHub** on the connect page. The connect page links to
+the app's install page when no installation exists yet.
+
+## Push-triggered deploys
+
+For a repository connected through the app, every push to the connected
+branch:
+
+1. **Syncs** — re-reads `keel.yaml` from the pushed commit.
+2. **Deploys** every target of that repository with **Deploy automatically
+   on push** enabled — but only when the target's configuration variables
+   are complete and valid, and no run is already active for it.
+
+Deploy-time variables use their defaults; a required deploy-time variable
+without a default blocks the auto-deploy with a message on the target page.
+Runs started this way show the trigger *push* and the commit SHA.
+
+Enable auto-deploy per target on the target's **Target settings**, or when
+creating the target. Targets on repositories connected by plain URL do not
+show the option.
+
+## Security
+
+Webhook deliveries are authenticated with the HMAC-SHA256 signature GitHub
+computes from the webhook secret; unsigned or mis-signed deliveries are
+rejected. Installation tokens are minted on demand with the app's private
+key and cached until shortly before they expire; they are never stored in
+the database.

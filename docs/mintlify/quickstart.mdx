@@ -1,0 +1,167 @@
+---
+title: "Quickstart"
+description: "Create a keel.yaml, open the local UI, configure a target, and run your first deployment with live logs."
+icon: "rocket"
+---
+
+This walkthrough takes an existing repository from no Keel configuration to
+a completed deployment. It uses a sample deployment that only prints, so you
+can run it without any cloud credentials.
+
+## Prerequisites
+
+- The `keel` CLI — see [Install](/install).
+- Docker running on this machine.
+- A repository to deploy. Any directory works; the sample does not need git.
+
+## Set up a repository
+
+<Steps>
+  <Step title="Create the starter files">
+    From the repository root:
+
+    ```console
+    $ keel init
+    Created /home/you/api/keel.yaml
+    Created /home/you/api/deploy/Dockerfile
+    ```
+
+    `keel init` never overwrites files that already exist. You get two:
+
+    - `keel.yaml` — one sample deployment named `production` with one
+      variable, `GREETING`, and two steps that echo it.
+    - `deploy/Dockerfile` — the environment the steps run in. The starter is
+      plain Alpine with `bash`, `curl`, and `git`.
+  </Step>
+  <Step title="Look at the configuration">
+    Open `keel.yaml`. The parts that matter:
+
+    ```yaml keel.yaml
+    version: 1
+
+    deployments:
+      production:
+        description: Deploy this project to production.
+
+        environment:
+          dockerfile: deploy/Dockerfile
+          context: .
+
+        steps:
+          - name: Show environment
+            run: |
+              echo "Deploying $KEEL_DEPLOYMENT to target $KEEL_TARGET"
+              echo "Greeting: $GREETING"
+          - name: Deploy
+            run: |
+              echo "Put your real deployment commands here."
+
+        variables:
+          GREETING:
+            label: Greeting
+            type: text
+            required: true
+            default: hello
+            description: An example variable. Replace it with your real inputs.
+    ```
+
+    Every variable becomes an environment variable inside the run and a form
+    field in the UI. Every step is a shell script run inside a container built
+    from the Dockerfile, with the repository mounted at `/workspace`.
+  </Step>
+  <Step title="Validate it">
+    ```console
+    $ keel validate
+    ✓ /home/you/api/keel.yaml is valid
+      deployment production               2 step(s), 1 variable(s)
+    ```
+
+    Validation reports every problem at once with the exact path of the
+    offending key, so a broken file is quick to fix.
+  </Step>
+</Steps>
+
+## Deploy from the UI
+
+<Steps>
+  <Step title="Start Keel Dev">
+    ```console
+    $ keel dev
+    Keel dev running
+
+      Repository:  /home/you/api
+      UI:          http://127.0.0.1:3400
+
+    Press Ctrl+C to stop.
+    ```
+
+    Open [http://127.0.0.1:3400](http://127.0.0.1:3400). The dashboard lists
+    every deployment in `keel.yaml`. The file is re-read on every page load,
+    so edits show up on refresh.
+  </Step>
+  <Step title="Create a target">
+    Open the `production` deployment and create a target — call it `local`.
+    A target is one concrete place the deployment goes, and it keeps its own
+    values and run history. Real projects have one per client or per
+    environment.
+  </Step>
+  <Step title="Fill in the variables">
+    The target page renders a form from the variable declarations. Required
+    fields that have no default are marked with a red asterisk; `GREETING`
+    has a default, so you can leave it or change it. Press **Save variables**.
+
+    Values are stored encrypted in `.keel/dev.db`. Because `GREETING` has a
+    default, the target's row on the deployment page already reads *Ready to
+    deploy*; a variable without a default would show *Needs 1 value* until
+    you filled it in, and the Deploy button would stay disabled.
+  </Step>
+  <Step title="Deploy">
+    Press **Deploy now**. Keel builds the environment image from
+    `deploy/Dockerfile`, starts a container with the repository mounted and
+    `GREETING` exported, and runs the two steps. The run page shows a live log
+    and a status per step:
+
+    ```text
+    Deploying production to target local
+    Greeting: hello
+    Put your real deployment commands here.
+    ```
+
+    <Check>
+      The run finishes with the status **succeeded**. You just deployed.
+    </Check>
+  </Step>
+</Steps>
+
+## Deploy from the terminal
+
+Everything the UI does, the CLI does headlessly, which is how you wire Keel
+into scripts and CI:
+
+```console
+$ keel deploy production --target local              # the target's saved values
+$ keel deploy production --var GREETING=hi           # ad-hoc values, no target
+$ keel manifest production -o required-values.md     # the variable manifest
+```
+
+`keel deploy` streams the same log to the terminal and exits non-zero when a
+step fails.
+
+## Make it real
+
+Replace the sample with your project's actual deployment:
+
+<Columns cols={2}>
+  <Card title="Author a deployment" icon="pen-ruler" href="/guides/author-a-deployment">
+    Turn a deploy script and a README section into steps and variables.
+  </Card>
+  <Card title="Environment images" icon="box" href="/guides/environment-images">
+    Put the AWS, GCP, Terraform, or kubectl tooling your steps need into the Dockerfile.
+  </Card>
+  <Card title="Variables" icon="sliders" href="/concepts/variables">
+    Types, validation, secrets, defaults, and the form Keel renders from them.
+  </Card>
+  <Card title="Keel Cloud" icon="cloud" href="/cloud/overview">
+    Give the whole team a browser-based way to deploy, with roles and push-triggered runs.
+  </Card>
+</Columns>

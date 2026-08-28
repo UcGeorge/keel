@@ -1,0 +1,113 @@
+---
+title: "Headless deploys and CI"
+description: "Run deployments from the terminal and from CI with keel deploy: value precedence, var files, targets, and exit codes."
+icon: "terminal"
+---
+
+`keel deploy` runs a deployment without the UI: it builds the environment
+image, executes the steps, streams the log to the terminal, and exits
+non-zero on failure. It needs Docker, a `keel.yaml` in the current
+directory, and values for the variables.
+
+## Where values come from
+
+In increasing precedence:
+
+1. **Defaults** declared in `keel.yaml`.
+2. **A target's saved values**, with `--target NAME` — the values configured
+   in `keel dev` on this machine.
+3. **A var file**, with `--var-file path` — `NAME=value` per line,
+   `#` comments allowed.
+4. **Flags**, `--var NAME=value`, repeatable.
+
+```console
+$ keel deploy aws-production --target client-acme
+$ keel deploy aws-production --var-file .secrets/acme.env --var RUN_MODE=plan
+```
+
+Values for variables the deployment does not declare are dropped, so one var
+file can serve several deployments. Before anything runs, the merged set is
+validated the same way the UI validates it; missing or invalid values are
+listed and the command exits with status 1.
+
+<Note>
+  `--target` reads `.keel/dev.db` in the repository and decrypts it with this
+  machine's `dev.key`. It works where the target was created in `keel dev`,
+  not on another machine or in CI. For CI, use a var file or flags.
+</Note>
+
+Without `--target`, the run's `KEEL_TARGET` is `cli`.
+
+## Outputs
+
+On success, declared outputs are printed:
+
+```text
+✓ Deployment succeeded
+
+Outputs:
+  SERVICE_URL = https://api.acme.example.com
+  DB_PASSWORD = ••• (secret — revealable in the Keel UI)
+```
+
+Secret outputs, and outputs that contain a secret input's value, are never
+printed.
+
+## In CI
+
+A CI job is a machine with Docker, the `keel` binary, and the repository.
+Provide the values from the CI system's secret store.
+
+```yaml .github/workflows/deploy.yml
+name: Deploy
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Client to deploy
+        type: choice
+        options: [acme, globex]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install keel
+        run: curl -fsSL https://ucgeorge.github.io/keel/install.sh | sh
+      - name: Deploy
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets[format('{0}_AWS_ACCESS_KEY_ID', inputs.target)] }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets[format('{0}_AWS_SECRET_ACCESS_KEY', inputs.target)] }}
+        run: |
+          keel deploy aws-production \
+            --var "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+            --var "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+            --var AWS_REGION=eu-west-1
+```
+
+The same steps and the same environment image run in CI as on a laptop or in
+Keel Cloud, which is the point: there is one definition of the deployment.
+
+<Tip>
+  For push-triggered deploys with saved per-target values and a run history,
+  Keel Cloud with the GitHub App does this without a CI job. See
+  [GitHub App](/cloud/github-app).
+</Tip>
+
+## Exit codes and signals
+
+- `0` — every step succeeded.
+- `1` — a step failed, a value was missing or invalid, Docker was
+  unreachable, or the configuration did not load. The message says which.
+- Ctrl+C (SIGINT) or SIGTERM cancels the run and removes the container; the
+  command reports *deployment canceled*.
+
+## Other headless commands
+
+```console
+$ keel validate                                   # exit 1 with a problem list when invalid
+$ keel manifest aws-production -f html -o values.html
+```
+
+The full option list is in the [CLI reference](/reference/cli).

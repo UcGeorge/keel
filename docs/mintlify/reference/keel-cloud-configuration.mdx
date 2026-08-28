@@ -1,0 +1,54 @@
+---
+title: "Keel Cloud configuration"
+description: "Every environment variable keel-cloud reads, with defaults and production guidance."
+icon: "gear"
+---
+
+`keel-cloud` is configured entirely through environment variables.
+
+## Core
+
+| Variable | Default | Description |
+|---|---|---|
+| `KEEL_DATABASE_URL` | — | **Required.** PostgreSQL URL, e.g. `postgres://keel:keel@localhost:5432/keel?sslmode=disable`. `DATABASE_URL` is read when unset. |
+| `KEEL_ADDR` | `:8080` | Listen address. |
+| `KEEL_BASE_URL` | `http://localhost:8080` | External URL. Used in invite links and the GitHub App webhook URL. An `https://` value turns on Secure cookies. Trailing slashes are stripped. |
+| `KEEL_DATA_DIR` | `./keel-data` | Working directory for repository clones and run workspaces (`runs/<run-id>`), and the generated encryption key when none is configured. Must be a host path when `keel-cloud` runs in a container — see [self-hosting](/cloud/self-hosting#run-the-container-image). |
+| `KEEL_ENCRYPTION_KEY` | generated | 64 hexadecimal characters (32 bytes) — the AES-256 key for variable values, repository tokens, and secret outputs at rest. `openssl rand -hex 32` produces one. When unset, a key is generated into `KEEL_DATA_DIR/encryption.key` and a warning is logged. |
+
+## GitHub App
+
+All optional. Setting `KEEL_GITHUB_APP_ID` enables the integration and makes
+a private key and a webhook secret mandatory.
+
+| Variable | Description |
+|---|---|
+| `KEEL_GITHUB_APP_ID` | Numeric App ID. |
+| `KEEL_GITHUB_APP_SLUG` | The app's URL slug; used to build the install link. |
+| `KEEL_GITHUB_PRIVATE_KEY` | The app's private key as inline PEM. |
+| `KEEL_GITHUB_PRIVATE_KEY_FILE` | Path to the `.pem` file; used when the inline key is unset. |
+| `KEEL_GITHUB_WEBHOOK_SECRET` | The webhook secret configured on the app. |
+
+See [GitHub App](/cloud/github-app) for the setup.
+
+## Host requirements
+
+- PostgreSQL 13 or newer, reachable at `KEEL_DATABASE_URL`. Migrations run
+  at startup.
+- `git` on the `PATH`. Startup fails without it.
+- The Docker CLI on the `PATH` and a reachable daemon. Missing Docker does
+  not stop startup; deploys fail with a clear message until it is available.
+
+## Endpoints worth knowing
+
+| Path | Purpose |
+|---|---|
+| `GET /healthz` | `ok` when the database responds; 503 otherwise. |
+| `POST /webhooks/github` | GitHub App deliveries; HMAC-verified. |
+| `GET /orgs/{org}/repos/{repo}/runs/{id}/events` | Server-sent events for a run's live log. Disable proxy buffering here. |
+
+## Logging
+
+Structured `key=value` lines on standard error at info level. Startup logs
+the listen address, base URL, and version; the GitHub App logs its App ID
+when enabled.

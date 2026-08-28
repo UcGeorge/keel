@@ -1,0 +1,37 @@
+# Validates the Mintlify documentation whenever it changes. Mintlify itself
+# deploys the site from the connected branch; this only catches broken
+# links and invalid pages before they reach it.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/mintlify/**"]
+  pull_request:
+    paths: ["docs/mintlify/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs/mintlify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the Mintlify CLI
+        run: npm install -g mint
+
+      - name: Check links
+        run: mint broken-links
+
+      - name: Validate
+        run: mint validate

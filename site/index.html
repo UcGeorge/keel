@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keel — Deployments your whole team can run</title>
+<meta name="description" content="Keel turns the tribal knowledge of how a project deploys into a keel.yaml that anyone — including non-technical, client-facing operators — can run through a clean web UI. Open source, single binary, runs on Docker.">
+<link rel="canonical" href="https://ucgeorge.github.io/keel/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Keel">
+<meta property="og:title" content="Keel — Deployments your whole team can run">
+<meta property="og:description" content="Describe a deployment once in keel.yaml. Anyone deploys it from a browser — typed variables, encrypted secrets, live logs, outputs, and a manifest for whoever supplies the values.">
+<meta property="og:url" content="https://ucgeorge.github.io/keel/">
+<meta property="og:image" content="https://ucgeorge.github.io/keel/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Keel — Deployments your whole team can run">
+<meta name="twitter:description" content="Describe a deployment once in keel.yaml. Anyone deploys it from a browser.">
+<meta name="twitter:image" content="https://ucgeorge.github.io/keel/og.png">
+<meta name="theme-color" content="#0f172a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #0f172a; --ink-soft: #1e293b; --ink-deep: #020617;
+    --paper: #ffffff; --bg: #f8fafc; --bg-2: #f1f5f9;
+    --text: #0f172a; --text-2: #475569; --text-3: #64748b; --line: #e2e8f0; --line-2: #cbd5e1;
+    --teal: #0d9488; --teal-2: #0f766e; --teal-soft: #ccfbf1; --teal-ring: rgba(13,148,136,.25);
+    --amber-soft: #fef3c7; --amber: #b45309; --red: #dc2626;
+    --fog: #e2e8f0; --fog-dim: #94a3b8;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --radius: 12px; --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px -12px rgba(15,23,42,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0b1220; --bg: #060b16; --bg-2: #0f172a;
+      --text: #e2e8f0; --text-2: #94a3b8; --text-3: #64748b; --line: #1e293b; --line-2: #334155;
+      --teal-soft: rgba(13,148,136,.16); --amber-soft: rgba(180,83,9,.18); --amber: #fbbf24;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: var(--sans); color: var(--text); background: var(--bg); -webkit-font-smoothing: antialiased; line-height: 1.6; }
+  a { color: inherit; text-decoration: none; }
+  code, pre, kbd { font-family: var(--mono); }
+  .wrap { width: min(1120px, calc(100% - 48px)); margin: 0 auto; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.02em; line-height: 1.15; }
+  h2 { font-size: clamp(28px, 4vw, 38px); font-weight: 700; }
+  p { margin: 0; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--teal); }
+  .lede { font-size: 18px; color: var(--text-2); max-width: 62ch; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; font-size: 15px; border: 1px solid transparent; transition: transform .12s ease, background .12s ease, border-color .12s ease; white-space: nowrap; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: var(--teal); color: #fff; }
+  .btn-primary:hover { background: var(--teal-2); }
+  .btn-ghost { background: transparent; color: var(--text); border-color: var(--line-2); }
+  .btn-ghost:hover { border-color: var(--text-3); }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* nav */
+  .nav { position: sticky; top: 0; z-index: 20; backdrop-filter: saturate(180%) blur(12px); background: color-mix(in srgb, var(--bg) 82%, transparent); border-bottom: 1px solid var(--line); }
+  .nav .wrap { display: flex; align-items: center; gap: 28px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
+  .brand svg { width: 30px; height: 30px; }
+  .nav-links { display: flex; gap: 24px; margin-left: auto; font-size: 14px; font-weight: 500; color: var(--text-2); }
+  .nav-links a:hover { color: var(--text); }
+  .nav .btn { padding: 8px 14px; font-size: 14px; }
+  @media (max-width: 760px) { .nav-links { display: none; } }
+
+  /* hero */
+  .hero { padding: 96px 0 56px; position: relative; overflow: hidden; }
+  .hero::before { content: ""; position: absolute; inset: -40% -20% auto auto; width: 720px; height: 720px; border-radius: 50%; background: radial-gradient(closest-side, rgba(20,184,166,.18), transparent 70%); pointer-events: none; }
+  .hero h1 { font-size: clamp(40px, 6.4vw, 68px); font-weight: 800; letter-spacing: -0.035em; max-width: 14ch; }
+  .hero .lede { margin-top: 22px; font-size: 20px; }
+  .hero .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .install { margin-top: 28px; display: inline-flex; align-items: center; gap: 12px; max-width: 100%; padding: 10px 12px 10px 16px; border-radius: 10px; background: var(--ink); color: var(--fog); font-family: var(--mono); font-size: 14px; border: 1px solid #1e293b; }
+  .install .dollar { color: #5eead4; user-select: none; }
+  .install code { white-space: nowrap; overflow-x: auto; }
+  .copy { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #cbd5e1; cursor: pointer; }
+  .copy:hover { background: #334155; }
+  .copy svg { width: 16px; height: 16px; }
+  .copy.done { color: #5eead4; border-color: #0f766e; }
+
+  /* showcase */
+  .showcase { padding: 24px 0 80px; }
+  .panes { display: grid; grid-template-columns: 1.05fr 1fr; gap: 20px; align-items: stretch; }
+  @media (max-width: 900px) { .panes { grid-template-columns: 1fr; } }
+  .pane { border-radius: 16px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--line); background: var(--paper); }
+  .pane-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--text-3); border-bottom: 1px solid var(--line); background: var(--bg-2); }
+  .pane-head .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line-2); }
+  .pane-head code { font-weight: 500; color: var(--text-2); }
+  .pane.code { background: var(--ink); border-color: #1e293b; }
+  .pane.code .pane-head { background: #0b1220; border-color: #1e293b; color: #94a3b8; }
+  .pane.code .pane-head code { color: #cbd5e1; }
+  .pane.code pre { margin: 0; padding: 18px 20px; font-size: 13px; line-height: 1.6; color: var(--fog); overflow-x: auto; }
+  .k { color: #7dd3fc; } .s { color: #fcd34d; } .c { color: #64748b; } .b { color: #c4b5fd; } .n { color: #86efac; }
+  .arrow { display: none; }
+  .form { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; font-size: 13px; }
+  .field label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; color: var(--text); }
+  .field .req { color: var(--red); font-weight: 700; }
+  .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: #ede9fe; color: #6d28d9; }
+  .badge.opt { background: transparent; color: var(--text-3); font-weight: 500; }
+  .badge.dep { background: #e0f2fe; color: #0369a1; }
+  @media (prefers-color-scheme: dark) { .badge { background: rgba(109,40,217,.25); color: #c4b5fd; } .badge.dep { background: rgba(3,105,161,.3); color: #7dd3fc; } }
+  .field .name { font-family: var(--mono); font-size: 11px; color: var(--text-3); background: var(--bg-2); padding: 1px 6px; border-radius: 4px; }
+  .input { margin-top: 6px; height: 34px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--paper); display: flex; align-items: center; padding: 0 10px; color: var(--text-2); font-size: 13px; justify-content: space-between; }
+  .input.mask { letter-spacing: 2px; color: var(--text-3); }
+  .input.err { border-color: var(--red); }
+  .hint { margin-top: 5px; font-size: 11.5px; color: var(--text-3); }
+  .hint.err { color: var(--red); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .ready { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #047857; background: #ecfdf5; padding: 3px 9px; border-radius: 999px; }
+  .ready::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #10b981; }
+  @media (prefers-color-scheme: dark) { .ready { background: rgba(16,185,129,.15); color: #6ee7b7; } }
+  .deploy { display: inline-flex; align-items: center; gap: 6px; background: var(--teal); color: #fff; font-weight: 600; font-size: 13px; padding: 8px 14px; border-radius: 8px; }
+  .deploy svg { width: 14px; height: 14px; }
+
+  /* narrative */
+  .story { padding: 40px 0 80px; }
+  .story blockquote { margin: 0; padding: 0 0 0 20px; border-left: 3px solid var(--teal); font-size: clamp(20px, 2.6vw, 26px); font-weight: 500; line-height: 1.45; letter-spacing: -0.01em; max-width: 34ch; }
+  .story .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 44px; }
+  @media (max-width: 800px) { .story .grid { grid-template-columns: 1fr; } }
+  .story .grid h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .story .grid p { color: var(--text-2); font-size: 15px; }
+
+  /* sections */
+  section.band { padding: 88px 0; border-top: 1px solid var(--line); }
+  section.band.alt { background: var(--paper); }
+  .sec-head { max-width: 62ch; margin-bottom: 40px; }
+  .sec-head .lede { margin-top: 14px; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: step; }
+  @media (max-width: 800px) { .steps { grid-template-columns: 1fr; } }
+  .step { position: relative; padding: 24px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--paper); }
+  .step::before { counter-increment: step; content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: var(--teal-soft); color: var(--teal); font-weight: 700; font-size: 13px; margin-bottom: 14px; }
+  .step h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .step p { color: var(--text-2); font-size: 15px; }
+  .step code { font-size: 12.5px; background: var(--bg-2); padding: 1px 5px; border-radius: 4px; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .features { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
+  .feat { padding: 22px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--bg); }
+  section.band.alt .feat { background: var(--bg); }
+  .feat .ic { width: 36px; height: 36px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; background: var(--teal-soft); color: var(--teal); margin-bottom: 14px; }
+  .feat .ic svg { width: 18px; height: 18px; }
+  .feat h3 { font-size: 15.5px; font-weight: 700; margin-bottom: 6px; }
+  .feat p { font-size: 14.5px; color: var(--text-2); }
+
+  .editions { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 800px) { .editions { grid-template-columns: 1fr; } }
+  .edition { padding: 28px; border-radius: 16px; border: 1px solid var(--line); background: var(--paper); }
+  .edition.cloud { background: var(--ink); color: var(--fog); border-color: #1e293b; }
+  .edition .tag { font-family: var(--mono); font-size: 12px; color: var(--teal); }
+  .edition.cloud .tag { color: #5eead4; }
+  .edition h3 { font-size: 22px; font-weight: 700; margin: 6px 0 8px; }
+  .edition > p { color: var(--text-2); font-size: 15px; }
+  .edition.cloud > p { color: #94a3b8; }
+  .edition ul { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 9px; font-size: 14.5px; }
+  .edition li { display: flex; gap: 10px; align-items: flex-start; }
+  .edition li svg { flex: none; width: 16px; height: 16px; margin-top: 4px; color: var(--teal); }
+  .edition.cloud li svg { color: #5eead4; }
+  .edition .foot { margin-top: 22px; font-size: 14px; }
+  .edition .foot a { color: var(--teal); font-weight: 600; }
+  .edition.cloud .foot a { color: #5eead4; }
+
+  .installs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .installs { grid-template-columns: 1fr; } }
+  .cmd { border-radius: var(--radius); border: 1px solid #1e293b; background: var(--ink); color: var(--fog); overflow: hidden; }
+  .cmd .h { padding: 10px 14px; font-size: 12px; font-weight: 600; color: #94a3b8; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }
+  .cmd pre { margin: 0; padding: 14px; font-size: 13px; overflow-x: auto; white-space: pre; }
+  .cmd .copy { width: 26px; height: 26px; }
+  .more { margin-top: 20px; font-size: 14.5px; color: var(--text-2); }
+  .more a { color: var(--teal); font-weight: 600; }
+
+  footer { border-top: 1px solid var(--line); padding: 36px 0; font-size: 14px; color: var(--text-3); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; }
+  footer nav { display: flex; gap: 20px; }
+  footer nav a:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Keel">
+      <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#0d9488"/><path d="M10 6v14.5a5.5 5.5 0 0 0 11 0V18" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><path d="M10 14.5 18.5 8M10 17.5 20 25.5" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/></svg>
+      Keel
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#editions">Keel Cloud</a>
+      <a href="#install">Install</a>
+      <a href="https://keel.mintlify.app">Docs</a>
+    </nav>
+    <a class="btn btn-ghost" href="https://github.com/UcGeorge/keel">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <span class="eyebrow">Open source · Single binary · Runs on Docker</span>
+      <h1 style="margin-top:16px">Deployments your whole team can run.</h1>
+      <p class="lede">Every project has one person who really knows how to deploy it. Keel turns that knowledge into a <code>keel.yaml</code> — and turns the file into a form that anyone, including non-technical, client-facing operators, can run from a browser.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://keel.mintlify.app/quickstart">Get started
+          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 10a.75.75 0 0 1 .75-.75h10.638L10.23 5.29a.75.75 0 1 1 1.04-1.08l5.5 5.25a.75.75 0 0 1 0 1.08l-5.5 5.25a.75.75 0 1 1-1.04-1.08l4.158-3.96H3.75A.75.75 0 0 1 3 10Z" clip-rule="evenodd"/></svg>
+        </a>
+        <a class="btn btn-ghost" href="https://keel.mintlify.app">Read the docs</a>
+      </div>
+      <div class="install">
+        <span class="dollar">$</span>
+        <code id="install-cmd">curl -fsSL https://ucgeorge.github.io/keel/install.sh | sh</code>
+        <button class="copy" data-copy="#install-cmd" aria-label="Copy install command"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12A1.5 1.5 0 0 1 17 6.622V12.5a1.5 1.5 0 0 1-1.5 1.5h-1v-3.379a3 3 0 0 0-.879-2.121L10.5 5.379A3 3 0 0 0 8.379 4.5H7v-1Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-5.879a1.5 1.5 0 0 0-.44-1.06L9.44 6.439A1.5 1.5 0 0 0 8.378 6H4.5Z"/></svg></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="showcase" aria-label="From configuration to form">
+    <div class="wrap">
+      <div class="panes">
+        <div class="pane code">
+          <div class="pane-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;<code>keel.yaml</code></div>
+<pre><span class="k">version</span>: <span class="n">1</span>
+
+<span class="k">deployments</span>:
+  <span class="k">aws-production</span>:
+    <span class="k">description</span>: Deploy the API to AWS ECS.
+    <span class="k">environment</span>:
+      <span class="k">dockerfile</span>: deploy/aws.Dockerfile   <span class="c"># the tools live here</span>
+    <span class="k">steps</span>:
+      - <span class="k">name</span>: Authenticate
+        <span class="k">run</span>: ./deploy/aws-login.sh
+      - <span class="k">name</span>: Deploy
+        <span class="k">run</span>: ./deploy/release.sh
+    <span class="k">variables</span>:
+      <span class="k">AWS_ACCESS_KEY_ID</span>:
+        <span class="k">secret</span>: <span class="b">true</span>
+        <span class="k">validation</span>: {<span class="k">pattern</span>: <span class="s">"AKIA[0-9A-Z]{16}"</span>}
+        <span class="k">manifest</span>:
+          <span class="k">why</span>: Authenticates with your AWS account.
+          <span class="k">how</span>: IAM → Users → programmatic access.
+      <span class="k">AWS_REGION</span>:
+        <span class="k">type</span>: select
+        <span class="k">default</span>: us-east-1
+        <span class="k">options</span>: [us-east-1, {<span class="k">value</span>: eu-west-1, <span class="k">label</span>: Europe}]
+      <span class="k">IMAGE_TAG</span>:
+        <span class="k">deploy_time</span>: <span class="b">true</span>
+    <span class="k">outputs</span>:
+      <span class="k">SERVICE_URL</span>: {<span class="k">label</span>: Service URL}</pre>
+        </div>
+        <div class="pane">
+          <div class="pane-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span>&nbsp;aws-production <span style="opacity:.5">/</span> client-acme</div>
+          <div class="form">
+            <div class="row2">
+              <div class="field">
+                <label>AWS Access Key ID <span class="req">*</span> <span class="name">AWS_ACCESS_KEY_ID</span> <span class="badge">secret</span></label>
+                <div class="input mask">••••••••••••••••••</div>
+                <div class="hint">Must match AKIA[0-9A-Z]{16} · saved — leave blank to keep</div>
+              </div>
+              <div class="field">
+                <label>Region <span class="name">AWS_REGION</span></label>
+                <div class="input">Europe <span>▾</span></div>
+                <div class="hint">Default: us-east-1</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>Notification email <span class="name">NOTIFY_EMAIL</span> <span class="badge opt">optional</span></label>
+              <div class="input err">ops@acme</div>
+              <div class="hint err">must be a valid email address</div>
+            </div>
+            <div class="field">
+              <label>Image tag <span class="req">*</span> <span class="name">IMAGE_TAG</span> <span class="badge dep">deploy-time</span></label>
+              <div class="input" style="color:var(--text-3)">asked every time you deploy</div>
+            </div>
+            <div class="form-foot">
+              <span class="ready">Ready to deploy</span>
+              <span class="deploy"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg>Deploy now</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="story">
+    <div class="wrap">
+      <blockquote>The steps, the CLIs, the six variables, the paragraph in the README that says <em>"then run this script"</em> — it all lives in one person's head. When they're away, nobody deploys.</blockquote>
+      <div class="grid">
+        <div>
+          <h3>The file is the source of truth</h3>
+          <p>Deployments are declared in <code>keel.yaml</code> the way services are declared in a compose file. It is versioned, reviewed, and diffable — nothing is configured by clicking.</p>
+        </div>
+        <div>
+          <h3>Nobody installs the tools</h3>
+          <p>Each deployment names a Dockerfile with every CLI the steps need. Keel builds it and runs the steps inside. The person pressing Deploy needs a browser.</p>
+        </div>
+        <div>
+          <h3>Values live with the target</h3>
+          <p>A client, an environment, a region — each target keeps its own encrypted values and its own run history. Same steps, different destinations.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">How it works</span>
+        <h2 style="margin-top:12px">Describe once. Deploy from anywhere.</h2>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <h3>Describe the deployment</h3>
+          <p>Write the environment, the ordered steps, and the variables — with types, validation, secrets, defaults, and the text a client will read. <code>keel validate</code> checks the whole file at once.</p>
+        </div>
+        <div class="step">
+          <h3>Keel renders the form</h3>
+          <p>Run <code>keel dev</code> or open Keel Cloud. Every variable becomes a field; required ones are marked, formats are shown up front, secrets are masked. Create a target and fill it in — or hand over the generated manifest.</p>
+        </div>
+        <div class="step">
+          <h3>Anyone deploys</h3>
+          <p>Press Deploy. The image builds, the steps run with every variable exported, the log streams live with secrets redacted, and the outputs land on the page with copy buttons.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">What's in the box</span>
+        <h2 style="margin-top:12px">The parts a real deployment needs</h2>
+        <p class="lede">Not a CI system and not a PaaS — the layer that makes an existing deployment safe for other people to run.</p>
+      </div>
+      <div class="features">
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M17 4.5a1.5 1.5 0 0 0-1.5-1.5h-11A1.5 1.5 0 0 0 3 4.5v2A1.5 1.5 0 0 0 4.5 8h11A1.5 1.5 0 0 0 17 6.5v-2ZM17 13.5a1.5 1.5 0 0 0-1.5-1.5h-11A1.5 1.5 0 0 0 3 13.5v2A1.5 1.5 0 0 0 4.5 17h11a1.5 1.5 0 0 0 1.5-1.5v-2Z"/></svg></div><h3>Typed, validated variables</h3><p>Text, number, email, URL, boolean, select, multi-line. Regex patterns with custom messages, ranges, lengths. The form shows the rule before you type and never loses what you entered.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 1a4.5 4.5 0 0 0-4.5 4.5V9H5a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-.5V5.5A4.5 4.5 0 0 0 10 1Zm3 8V5.5a3 3 0 1 0-6 0V9h6Z" clip-rule="evenodd"/></svg></div><h3>Secrets, handled</h3><p>Encrypted at rest with AES-256-GCM, masked in the form, redacted from every log line, never echoed back — and never printed by the CLI.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm0-3a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-3a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" clip-rule="evenodd"/></svg></div><h3>Targets</h3><p>One deployment, many destinations. Each target stores its own values and history, shows whether it's ready, and deploys with one click from the list.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M6.3 2.84A1.5 1.5 0 0 0 4 4.11v11.78a1.5 1.5 0 0 0 2.3 1.27l9.344-5.891a1.5 1.5 0 0 0 0-2.538L6.3 2.841Z"/></svg></div><h3>Live runs</h3><p>Build, then steps, each with its own status. Logs stream as they happen and are kept. Cancel removes the container. Nothing runs anywhere you don't control.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25Z" clip-rule="evenodd"/><path fill-rule="evenodd" d="M19 10a.75.75 0 0 0-.75-.75H8.704l1.048-.943a.75.75 0 1 0-1.004-1.114l-2.5 2.25a.75.75 0 0 0 0 1.114l2.5 2.25a.75.75 0 1 0 1.004-1.114l-1.048-.943h9.546A.75.75 0 0 0 19 10Z" clip-rule="evenodd"/></svg></div><h3>Outputs</h3><p><code>export SERVICE_URL=…</code> in a step and it appears on the run page with a copy button — kept per run, secret ones behind a reveal control.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.5 2A1.5 1.5 0 0 0 3 3.5v13A1.5 1.5 0 0 0 4.5 18h11a1.5 1.5 0 0 0 1.5-1.5V7.621a1.5 1.5 0 0 0-.44-1.06l-4.12-4.122A1.5 1.5 0 0 0 11.378 2H4.5Zm2.25 8.5a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-6.5Zm0 3a.75.75 0 0 0 0 1.5h6.5a.75.75 0 0 0 0-1.5h-6.5Z" clip-rule="evenodd"/></svg></div><h3>Variable manifests</h3><p>Generate the document you send a client: every value they must supply, why it's needed, and how to get it — in their language, without the repository.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 0 1-9.201 2.466l-.312-.311h2.433a.75.75 0 0 0 0-1.5H3.989a.75.75 0 0 0-.75.75v4.242a.75.75 0 0 0 1.5 0v-2.43l.31.31a7 7 0 0 0 11.712-3.138.75.75 0 0 0-1.449-.39Zm1.23-3.723a.75.75 0 0 0 .219-.53V2.929a.75.75 0 0 0-1.5 0V5.36l-.31-.31A7 7 0 0 0 3.239 8.188a.75.75 0 1 0 1.448.389A5.5 5.5 0 0 1 13.89 6.11l.311.31h-2.432a.75.75 0 0 0 0 1.5h4.243a.75.75 0 0 0 .53-.219Z" clip-rule="evenodd"/></svg></div><h3>Deploy-time &amp; conditional</h3><p>Ask for an image tag on every deploy. Show a destroy confirmation only when Action is destroy. Conditions chain and are validated for cycles.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M10.362 1.093a.75.75 0 0 0-.724 0L2.523 5.018 10 9.143l7.477-4.125-7.115-3.925ZM18 6.443l-7.25 4v8.25l6.862-3.786A.75.75 0 0 0 18 14.25V6.443ZM9.25 18.693v-8.25l-7.25-4v7.807a.75.75 0 0 0 .388.657l6.862 3.786Z"/></svg></div><h3>Docker-defined environments</h3><p>The Dockerfile is the environment. awscli, gcloud, terraform, kubectl — whatever the steps need, versioned with the code, identical on every machine.</p></div>
+        <div class="feat"><div class="ic"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3.25 3A2.25 2.25 0 0 0 1 5.25v9.5A2.25 2.25 0 0 0 3.25 17h13.5A2.25 2.25 0 0 0 19 14.75v-9.5A2.25 2.25 0 0 0 16.75 3H3.25Zm.943 8.752a.75.75 0 0 1 .055-1.06L6.128 9l-1.88-1.693a.75.75 0 1 1 1.004-1.114l2.5 2.25a.75.75 0 0 1 0 1.114l-2.5 2.25a.75.75 0 0 1-1.06-.055ZM9.75 10.25a.75.75 0 0 0 0 1.5h2.5a.75.75 0 0 0 0-1.5h-2.5Z" clip-rule="evenodd"/></svg></div><h3>Headless CLI</h3><p><code>keel deploy production --target client-acme</code> runs the same steps in the same image from a terminal or CI, with the same validation.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="editions">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Two editions, one engine</span>
+        <h2 style="margin-top:12px">Start on a laptop. Grow into a team.</h2>
+      </div>
+      <div class="editions">
+        <div class="edition">
+          <span class="tag">keel dev</span>
+          <h3>Keel Dev</h3>
+          <p>The local UI for one repository. Author, validate, and run deployments on your machine; state lives in <code>.keel/</code> next to the code.</p>
+          <ul>
+            <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>One binary, no accounts, no server</li>
+            <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>Edit <code>keel.yaml</code>, refresh — re-read on every load</li>
+            <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>Vendor it into a repo so the team runs <code>make keel-dev</code></li>
+          </ul>
+          <p class="foot"><a href="https://keel.mintlify.app/quickstart">Quickstart →</a></p>
+        </div>
+        <div class="edition cloud">
+          <span class="tag">keel-cloud</span>
+          <h3>Keel Cloud</h3>
+          <p>Self-hosted, multi-user, multi-repository. The same UI, backed by PostgreSQL, for a team — or a company and its clients.</p>
+          <ul>
+            <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>Organizations, roles, and deploy / configure scopes</li>
+            <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>Any git host over HTTPS, or a GitHub App with push-triggered deploys</li>
+            <li><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd"/></svg>Deploys itself: one Keel run stands up a production instance on Google Cloud for about $35/month</li>
+          </ul>
+          <p class="foot"><a href="https://keel.mintlify.app/cloud/overview">Keel Cloud docs →</a></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="install">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Install</span>
+        <h2 style="margin-top:12px">One command. Then <code>keel dev</code>.</h2>
+        <p class="lede">A single static binary for macOS, Linux, and Windows on amd64 and arm64. Docker is the only thing it needs to run a deployment.</p>
+      </div>
+      <div class="installs">
+        <div class="cmd"><div class="h">macOS &amp; Linux <button class="copy" data-copy="#c1" aria-label="Copy"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12A1.5 1.5 0 0 1 17 6.622V12.5a1.5 1.5 0 0 1-1.5 1.5h-1v-3.379a3 3 0 0 0-.879-2.121L10.5 5.379A3 3 0 0 0 8.379 4.5H7v-1Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-5.879a1.5 1.5 0 0 0-.44-1.06L9.44 6.439A1.5 1.5 0 0 0 8.378 6H4.5Z"/></svg></button></div><pre id="c1">curl -fsSL https://ucgeorge.github.io/keel/install.sh | sh</pre></div>
+        <div class="cmd"><div class="h">Windows (PowerShell) <button class="copy" data-copy="#c2" aria-label="Copy"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12A1.5 1.5 0 0 1 17 6.622V12.5a1.5 1.5 0 0 1-1.5 1.5h-1v-3.379a3 3 0 0 0-.879-2.121L10.5 5.379A3 3 0 0 0 8.379 4.5H7v-1Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-5.879a1.5 1.5 0 0 0-.44-1.06L9.44 6.439A1.5 1.5 0 0 0 8.378 6H4.5Z"/></svg></button></div><pre id="c2">irm https://ucgeorge.github.io/keel/install.ps1 | iex</pre></div>
+        <div class="cmd"><div class="h">Go <button class="copy" data-copy="#c3" aria-label="Copy"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h3.879a1.5 1.5 0 0 1 1.06.44l3.122 3.12A1.5 1.5 0 0 1 17 6.622V12.5a1.5 1.5 0 0 1-1.5 1.5h-1v-3.379a3 3 0 0 0-.879-2.121L10.5 5.379A3 3 0 0 0 8.379 4.5H7v-1Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h7a1.5 1.5 0 0 0 1.5-1.5v-5.879a1.5 1.5 0 0 0-.44-1.06L9.44 6.439A1.5 1.5 0 0 0 8.378 6H4.5Z"/></svg></button></div><pre id="c3">go install github.com/UcGeorge/keel/cmd/keel@latest</pre></div>
+      </div>
+      <p class="more">Prefer a download? Every <a href="https://github.com/UcGeorge/keel/releases">release</a> has archives and checksums for each platform. Then <code>cd</code> into a repository and run <code>keel init</code> — the <a href="https://keel.mintlify.app/quickstart">quickstart</a> takes it from there.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Keel — deployments your whole team can run.</span>
+    <nav aria-label="Footer">
+      <a href="https://keel.mintlify.app">Docs</a>
+      <a href="https://github.com/UcGeorge/keel">GitHub</a>
+      <a href="https://github.com/UcGeorge/keel/releases">Releases</a>
+      <a href="https://github.com/UcGeorge/keel/issues">Issues</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var el = document.querySelector(btn.getAttribute('data-copy'));
+      if (!el) return;
+      navigator.clipboard.writeText(el.textContent.trim()).then(function () {
+        btn.classList.add('done');
+        setTimeout(function () { btn.classList.remove('done'); }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+---
+title: "Install Keel"
+sidebarTitle: "Install"
+description: "Get the keel command onto macOS, Linux, or Windows with the install script, go install, or a release download."
+icon: "download"
+---
+
+The `keel` CLI is a single static binary with no runtime dependencies. It
+contains the local UI (`keel dev`), the headless deployer (`keel deploy`),
+and the manifest generator. Releases are published on
+[GitHub](https://github.com/UcGeorge/keel/releases) for macOS, Linux, and
+Windows on amd64 and arm64.
+
+## Prerequisites
+
+- **Docker**, running, on any machine that will execute deployments. The
+  CLI itself starts without it, but `keel dev` and `keel deploy` build the
+  environment image and run the steps with the Docker daemon.
+
+## Install
+
+<Tabs>
+  <Tab title="macOS and Linux">
+    ```sh
+    curl -fsSL https://ucgeorge.github.io/keel/install.sh | sh
+    ```
+
+    The script detects your OS and architecture, downloads the latest
+    release, verifies its SHA-256 against the release's `checksums.txt`, and
+    installs `keel` into `/usr/local/bin` — using `sudo` when that directory
+    is not writable and a terminal is attached, and falling back to
+    `~/.local/bin` otherwise.
+
+    Two environment variables adjust it:
+
+    | Variable | Effect |
+    |---|---|
+    | `KEEL_VERSION` | Install a specific release tag, for example `KEEL_VERSION=v0.3.0`. |
+    | `KEEL_INSTALL_DIR` | Install into this directory instead of the default. |
+
+    ```sh
+    KEEL_INSTALL_DIR="$HOME/bin" KEEL_VERSION=v0.3.0 sh -c "$(curl -fsSL https://ucgeorge.github.io/keel/install.sh)"
+    ```
+  </Tab>
+  <Tab title="Windows">
+    In PowerShell:
+
+    ```powershell
+    irm https://ucgeorge.github.io/keel/install.ps1 | iex
+    ```
+
+    The script downloads the latest release, verifies its checksum, places
+    `keel.exe` in `%LOCALAPPDATA%\Programs\keel`, and adds that directory to
+    your user `PATH`. Open a new terminal afterwards. `KEEL_VERSION` and
+    `KEEL_INSTALL_DIR` work the same way as on macOS and Linux.
+
+    Docker Desktop with the WSL 2 backend is the usual way to run Docker on
+    Windows. You can also install and run Keel entirely inside WSL with the
+    macOS and Linux instructions.
+  </Tab>
+  <Tab title="Go">
+    With Go 1.26 or newer:
+
+    ```sh
+    go install github.com/UcGeorge/keel/cmd/keel@latest
+    ```
+
+    The binary lands in `$(go env GOPATH)/bin`. Pin a version with
+    `@v0.3.0`. Binaries built this way report `keel version dev` unless you
+    pass the version through `-ldflags`, which the release archives do for you.
+  </Tab>
+  <Tab title="Download">
+    Every release on the
+    [releases page](https://github.com/UcGeorge/keel/releases) contains one
+    archive per platform plus a `checksums.txt`:
+
+    | Platform | Archive |
+    |---|---|
+    | macOS, Apple silicon | `keel_<version>_darwin_arm64.tar.gz` |
+    | macOS, Intel | `keel_<version>_darwin_amd64.tar.gz` |
+    | Linux, x86-64 | `keel_<version>_linux_amd64.tar.gz` |
+    | Linux, arm64 | `keel_<version>_linux_arm64.tar.gz` |
+    | Windows, x86-64 | `keel_<version>_windows_amd64.zip` |
+    | Windows, arm64 | `keel_<version>_windows_arm64.zip` |
+
+    Extract the `keel` binary and put it somewhere on your `PATH`.
+
+    ```sh
+    tar -xzf keel_0.3.0_linux_amd64.tar.gz keel
+    sudo install -m 0755 keel /usr/local/bin/keel
+    ```
+  </Tab>
+</Tabs>
+
+## Verify
+
+```console
+$ keel --version
+keel version v0.3.0
+$ keel --help
+```
+
+<Check>
+  If `keel --version` prints a version, you are ready for the [quickstart](/quickstart).
+</Check>
+
+## Upgrade
+
+Run the install command again — it always installs the latest release, or
+the release pinned with `KEEL_VERSION`. With Go, re-run `go install` with the
+new version.
+
+## Uninstall
+
+Delete the binary (`/usr/local/bin/keel`, `~/.local/bin/keel`, or
+`%LOCALAPPDATA%\Programs\keel\keel.exe`). Keel keeps two other things on a
+machine, both safe to delete:
+
+- `.keel/` inside each repository you ran `keel dev` in — the local SQLite
+  database with targets, encrypted values, and run history.
+- A key file that encrypts those values: `~/Library/Application Support/keel/dev.key`
+  on macOS, `~/.config/keel/dev.key` on Linux, `%AppData%\keel\dev.key` on
+  Windows. Deleting it makes every saved value in every `.keel/dev.db` on that
+  machine unreadable.
+
+## Vendoring Keel into a repository
+
+Teams that should not install anything can get the full local Keel experience
+from a repository that has the binaries committed. See
+[Embed Keel in a repository](/guides/embed-keel-in-a-repository).
+
+## Keel Cloud
+
+The multi-user edition, `keel-cloud`, is distributed as a Linux binary in the
+same releases and as a container image, `ghcr.io/ucgeorge/keel-cloud`. See
+[Self-hosting Keel Cloud](/cloud/self-hosting).

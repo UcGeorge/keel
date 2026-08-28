@@ -3,6 +3,7 @@
     "gofmt",
     "healthcheck",
     "isready",
+    "mintlify",
     "sqlc",
     "sslmode",
     "stylesheet",

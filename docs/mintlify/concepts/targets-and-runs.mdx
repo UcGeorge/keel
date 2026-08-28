@@ -1,0 +1,105 @@
+---
+title: "Targets and runs"
+description: "Targets are where a deployment goes and what values it uses there. Runs are individual executions, with live logs, step status, and history."
+icon: "bullseye"
+---
+
+## Targets
+
+A **target** is one concrete place a deployment goes — a client's account, a
+staging environment, a region. Create targets on a deployment's page; each
+needs a name in the same lowercase-and-hyphens style as deployment names,
+and an optional description.
+
+Every target stores its own values for the deployment's configuration
+variables, encrypted at rest, and keeps its own run history. The same
+`aws-production` deployment can have `client-acme`, `client-globex`, and
+`internal-staging` targets, each with different credentials and regions, all
+running the same steps.
+
+### Readiness
+
+The deployment page lists targets with their state:
+
+- **Ready to deploy** — every required, active configuration variable has a
+  value or a default. Clicking the row opens the target; the row's button
+  deploys directly.
+- **Needs N values** — something is missing or invalid. The button opens the
+  target instead, where the form marks what still needs input.
+
+Readiness only considers configuration variables. Deploy-time variables are
+supplied when a deploy starts and are never "missing" beforehand.
+
+### The target page
+
+The target page is organized around the thing you do most, deploying:
+
+1. **Deploy** — the button, disabled until the target is ready, and a note on
+   what is still needed when it is not.
+2. **Latest outputs** — the outputs of the most recent successful run, with
+   copy buttons.
+3. **Run history** — every run against this target, live-updating while one
+   is active.
+4. **Variables** — the form. Edit, save, and scroll back up to deploy.
+5. **Target settings** — rename, describe, and for Keel Cloud with a GitHub
+   App, enable **Deploy automatically on push**. Deleting a target removes its
+   values; its runs are kept.
+
+Saving the form persists every valid field immediately and reports invalid
+ones inline with the submitted text kept in place, so a typo in one field
+never costs you the other forty-nine.
+
+## Runs
+
+A **run** is one execution of a deployment against a target. Runs are created
+by the **Deploy** button, by `keel deploy`, or — in Keel Cloud with a GitHub
+App — by a push to the connected branch.
+
+### Starting a run
+
+If the deployment has deploy-time variables, **Deploy now** opens a modal
+that asks for them, pre-filled with defaults; a required deploy-time value
+that is missing or invalid blocks the deploy with an inline error. Without
+deploy-time variables the button starts the run immediately.
+
+Before anything executes Keel validates the full merged set of values —
+saved configuration plus deploy-time values — and refuses to start if a
+value is missing or invalid, listing the problems on the target page. It
+also checks that Docker is reachable. In Keel Cloud, a target can have only
+one active run at a time.
+
+### Lifecycle
+
+| Status | Meaning |
+|---|---|
+| `queued` | Created, waiting to start. |
+| `building` | The environment image is being built. |
+| `running` | Steps are executing. |
+| `succeeded` | Every step exited zero; outputs were captured. |
+| `failed` | A step exited non-zero, the build failed, or the server restarted mid-run. |
+| `canceled` | Stopped on request; the container was removed. |
+
+Each step has its own status — pending, running, succeeded, failed, or
+skipped — shown next to the log.
+
+### Logs
+
+Logs stream live to the run page over server-sent events and are persisted,
+so a run's log can be read later and the page can be reloaded mid-run.
+Secret values are replaced with `•••` before a line is stored or shown.
+
+A single log line longer than 1 MB cannot be processed; Keel notes it in
+the log and discards the rest of that output stream for the remainder of
+the run, which otherwise continues.
+
+### Canceling
+
+**Cancel** force-removes the run's container. The run is marked canceled,
+the current step failed, and later steps skipped. Whatever the steps had
+already done in the target system stays done — Keel does not roll back.
+
+### Outputs
+
+When every step succeeds, the declared outputs are read from the container's
+final environment and stored with the run. They show on the run page and, for
+the latest successful run, on the target page. See [Outputs](/concepts/outputs).

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14b8a6" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#14b8a6" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1040" cy="120" r="360" fill="url(#glow)"/>
+  <g transform="translate(96 96)">
+    <rect width="72" height="72" rx="18" fill="#0d9488"/>
+    <path d="M22.5 13.5v32.6a12.4 12.4 0 0 0 24.8 0V40.5" stroke="#fff" stroke-width="5.85" stroke-linecap="round" fill="none"/>
+    <path d="M22.5 32.6 41.6 18M22.5 39.4 45 57.4" stroke="#fff" stroke-width="5.85" stroke-linecap="round" fill="none"/>
+    <text x="96" y="52" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#f8fafc" letter-spacing="-1">Keel</text>
+  </g>
+  <text x="96" y="318" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#f8fafc" letter-spacing="-2.5">Deployments your</text>
+  <text x="96" y="400" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#f8fafc" letter-spacing="-2.5">whole team can run.</text>
+  <text x="96" y="470" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="28" fill="#94a3b8">Describe a deployment once in keel.yaml. Anyone deploys it from a browser.</text>
+  <g transform="translate(96 520)" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="24">
+    <rect width="836" height="56" rx="12" fill="#1e293b" stroke="#334155"/>
+    <text x="22" y="36" fill="#5eead4">$</text>
+    <text x="50" y="36" fill="#e2e8f0">curl -fsSL ucgeorge.github.io/keel/install.sh | sh</text>
+  </g>
+  <text x="1104" y="150" text-anchor="end" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" fill="#64748b">github.com/UcGeorge/keel</text>
+</svg>

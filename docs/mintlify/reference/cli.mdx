@@ -1,0 +1,105 @@
+---
+title: "CLI"
+description: "Every keel command and flag: init, validate, dev, deploy, and manifest, plus where the CLI keeps its state."
+icon: "terminal"
+---
+
+```console
+$ keel --help
+$ keel --version
+$ keel <command> --help
+```
+
+All commands work relative to the current directory unless a directory
+argument is given.
+
+## `keel init`
+
+```console
+$ keel init [dir]
+```
+
+Creates a starter `keel.yaml` (one sample deployment named `production`) and
+`deploy/Dockerfile` (Alpine with `bash`, `curl`, `git`) in `dir` (default
+`.`). Existing files are never overwritten; the command says which files it
+created or kept.
+
+## `keel validate`
+
+```console
+$ keel validate [dir]
+```
+
+Parses and validates the configuration in `dir`. On success prints each
+deployment with its step and variable counts and exits 0. On failure lists
+every problem with its path and exits 1. The rules are on the
+[validation page](/reference/validation#configuration-rules).
+
+## `keel dev`
+
+```console
+$ keel dev [dir] [-p PORT] [--host HOST]
+```
+
+Runs the local Keel UI for the repository in `dir`. If there is no
+`keel.yaml`, the starter files are created first.
+
+| Flag | Default | Description |
+|---|---|---|
+| `-p`, `--port` | `3400` | Port to listen on |
+| `--host` | `127.0.0.1` | Address to bind. `0.0.0.0` exposes the UI on the network — there is no authentication in Keel Dev. |
+
+On start, Keel checks that Docker is reachable and warns if not; the UI
+works, but deploys fail until Docker is running. Ctrl+C shuts down
+gracefully. State goes to `.keel/` in the repository (see below).
+
+## `keel deploy`
+
+```console
+$ keel deploy <deployment> [-t TARGET] [--var NAME=value]... [--var-file FILE]
+```
+
+Runs a deployment headlessly: builds the environment image, executes the
+steps, streams the log to the terminal, prints outputs on success. Requires
+Docker.
+
+| Flag | Description |
+|---|---|
+| `-t`, `--target` | Use the saved values of this target from `.keel/dev.db`. The target must have been created in `keel dev` on this machine. |
+| `--var` | Set one variable, `NAME=value`. Repeatable. Highest precedence. |
+| `--var-file` | An env-style file, `NAME=value` per line with `#` comments. |
+
+Precedence, lowest to highest: defaults, target values, var file, `--var`.
+Values for undeclared variables are ignored. Missing or invalid values are
+listed and the command exits 1 before anything runs; the same happens if
+Docker is unreachable or the configuration is invalid. Ctrl+C cancels the
+run. Exit status is 0 only when every step succeeded.
+
+Without `--target`, `KEEL_TARGET` inside the run is `cli`.
+
+## `keel manifest`
+
+```console
+$ keel manifest <deployment> [-o FILE] [-f md|html] [--var NAME]... [--project NAME]
+```
+
+Generates the variable manifest. See the
+[manifest reference](/reference/manifest#cli) for the flags.
+
+## State on disk
+
+| Path | Contents |
+|---|---|
+| `<repo>/.keel/dev.db` | SQLite: targets, encrypted values, runs, logs, outputs. Created by `keel dev`. |
+| `<repo>/.keel/.gitignore` | Written by Keel so the database stays out of git while `.keel/bin` (from embedding) can be committed. |
+| `dev.key` under the user config directory | The AES-256 key for every `.keel/dev.db` on this machine. macOS `~/Library/Application Support/keel/dev.key`; Linux `$XDG_CONFIG_HOME/keel/dev.key` (usually `~/.config/keel/dev.key`); Windows `%AppData%\keel\dev.key`. Created on first use. |
+
+Deleting `dev.key` makes every saved value on the machine unreadable; copy
+it to move a `.keel/dev.db` to another machine.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Any error: invalid configuration, value problems, Docker unreachable, a failed or canceled run. The message on standard error says which. |

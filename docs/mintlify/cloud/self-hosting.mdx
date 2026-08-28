@@ -1,0 +1,121 @@
+---
+title: "Self-hosting Keel Cloud"
+sidebarTitle: "Self-hosting"
+description: "Run keel-cloud with Docker Compose, as a binary, or from the container image, and configure it for production behind a TLS proxy."
+icon: "server"
+---
+
+## Requirements on the host
+
+- **PostgreSQL 13 or newer.** Migrations are embedded and applied
+  automatically at startup.
+- **Docker.** Runs execute on the host's Docker daemon.
+- **git.** Repositories are cloned with the `git` binary.
+
+## Evaluate with Docker Compose
+
+The Keel repository ships a compose file that starts PostgreSQL and
+`keel-cloud` together:
+
+```console
+$ git clone https://github.com/UcGeorge/keel.git && cd keel
+$ cp .env.example .env
+$ docker compose up --build
+```
+
+Open [http://localhost:8080](http://localhost:8080) and create the first
+account — it comes with a personal organization. Connect a repository by git
+URL and deploy.
+
+The compose file mounts the host's Docker socket into the container and
+bind-mounts `./keel-data` at the **same path** on both sides. That last part
+is not cosmetic: runs go through the host daemon, and the engine bind-mounts
+run workspaces by path, so a path that only exists inside the container
+would mount empty.
+
+## Run the binary
+
+`keel-cloud` for Linux (amd64 and arm64) is in every
+[release](https://github.com/UcGeorge/keel/releases) as
+`keel-cloud_<version>_linux_<arch>.tar.gz`, or build it from source with
+`make build-cloud`.
+
+```console
+$ export KEEL_DATABASE_URL='postgres://keel:keel@localhost:5432/keel?sslmode=disable'
+$ export KEEL_BASE_URL='https://keel.example.com'
+$ export KEEL_ENCRYPTION_KEY="$(openssl rand -hex 32)"    # generate once, back it up
+$ export KEEL_DATA_DIR=/var/lib/keel
+$ keel-cloud
+```
+
+A systemd unit with those variables in an `EnvironmentFile` is the usual
+production shape.
+
+## Run the container image
+
+```console
+$ docker run -d --name keel-cloud \
+    -p 8080:8080 \
+    -e KEEL_DATABASE_URL='postgres://keel:keel@db:5432/keel?sslmode=disable' \
+    -e KEEL_BASE_URL='https://keel.example.com' \
+    -e KEEL_ENCRYPTION_KEY='…' \
+    -e KEEL_DATA_DIR=/var/lib/keel \
+    -v /var/lib/keel:/var/lib/keel \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    ghcr.io/ucgeorge/keel-cloud:latest
+```
+
+The image contains `keel-cloud`, `git`, and the Docker CLI. As with compose,
+`KEEL_DATA_DIR` must be a host directory mounted at the same path.
+
+## Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `KEEL_DATABASE_URL` | — (required) | PostgreSQL connection URL. `DATABASE_URL` is accepted as a fallback. |
+| `KEEL_ADDR` | `:8080` | Listen address. |
+| `KEEL_BASE_URL` | `http://localhost:8080` | External URL. Used in invite links; an `https://` value turns on Secure cookies. Always set it in production. |
+| `KEEL_DATA_DIR` | `./keel-data` | Clone and run workspaces, and the generated encryption key when none is set. |
+| `KEEL_ENCRYPTION_KEY` | generated | 64-character hex AES-256 key for values and repository tokens at rest. |
+| `KEEL_GITHUB_APP_ID` and friends | unset | The optional [GitHub App](/cloud/github-app). |
+
+The complete table, including every GitHub App variable, is in the
+[configuration reference](/reference/keel-cloud-configuration).
+
+<Warning>
+  Without `KEEL_ENCRYPTION_KEY`, Keel generates a key into `KEEL_DATA_DIR`
+  and logs a warning. That is fine for evaluation. In production set the key
+  explicitly and back it up: losing it means re-entering every saved value
+  and every repository token.
+</Warning>
+
+## Behind a reverse proxy
+
+Terminate TLS in front of `keel-cloud` with Caddy, nginx, or Traefik and set
+`KEEL_BASE_URL` to the public `https://` URL. Live logs use server-sent
+events; if your proxy buffers responses by default, disable buffering for
+`/orgs/*/repos/*/runs/*/events`. With nginx:
+
+```nginx
+location ~ ^/orgs/.+/repos/.+/runs/.+/events$ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_buffering off;
+    proxy_read_timeout 1h;
+}
+```
+
+`GET /healthz` returns `ok` when the database is reachable and is the right
+target for load balancer and uptime checks.
+
+## Backups
+
+Everything durable is in PostgreSQL plus the encryption key. A nightly
+`pg_dump` and a copy of `KEEL_ENCRYPTION_KEY` in your secret store is a
+complete backup. `KEEL_DATA_DIR` holds only transient clones and can be
+recreated.
+
+## Upgrading
+
+Stop the process, replace the binary or pull the new image, start it.
+Migrations run at startup. Runs interrupted by the restart are marked failed
+on boot; start them again from the UI.

@@ -1,0 +1,83 @@
+---
+title: "Layout"
+description: "The groups mapping and the group, row, and flex variable keys that shape the form."
+icon: "table-columns"
+---
+
+Without layout keys the form is one variable per line in document order.
+Three keys change that.
+
+## Groups
+
+Declared on the deployment:
+
+```yaml
+groups:
+  1: Credentials                # shorthand: a label
+  2:
+    label: Tuning
+    description: Rarely needed — the defaults are correct.   # Markdown
+    collapsed: true
+```
+
+<ParamField path="<id>" type="integer key">
+  The group ID variables reference. Any integer; groups render in ascending
+  ID order.
+</ParamField>
+
+<ParamField path="label" type="string" default="Group <id>">
+  The group heading.
+</ParamField>
+
+<ParamField path="description" type="string (Markdown)">
+  Shown under the heading when the group is open.
+</ParamField>
+
+<ParamField path="collapsed" type="boolean" default="false">
+  Start the group closed. A group containing a validation error opens
+  regardless.
+</ParamField>
+
+Rules: a group referenced by a variable but not defined renders with the
+label `Group <id>`; a defined group not referenced by any variable is a
+validation error; IDs are unique.
+
+Each group header shows the number of variables in it and, when any need
+input, a **N required** chip.
+
+## Variable keys
+
+```yaml
+variables:
+  ACCESS_KEY:  {group: 1, row: 1}
+  SECRET_KEY:  {group: 1, row: 1, flex: 2}   # twice as wide as ACCESS_KEY
+  REGION:      {group: 1}                    # full width, after the rows
+  IMAGE_TAG:   {}                            # ungrouped, rendered first
+```
+
+<ParamField path="group" type="integer">
+  Places the variable in that group. Ungrouped variables render before all
+  groups.
+</ParamField>
+
+<ParamField path="row" type="integer">
+  Variables sharing a row ID within the same group (or among the ungrouped
+  variables) render side by side in document order; rows render in
+  ascending ID order. Variables without a row render after the rows, each
+  full width.
+</ParamField>
+
+<ParamField path="flex" type="number" default="1">
+  The variable's share of its row's width, CSS `flex-grow` style. Must be
+  positive and requires `row`. Fields have a minimum width, and rows wrap on
+  narrow screens.
+</ParamField>
+
+## Rendering order
+
+1. Ungrouped variables: explicit rows in ascending row ID, then rowless
+   variables in document order.
+2. Groups in ascending group ID, each with the same internal order.
+
+The same order applies to the target form, the deploy-time modal, and the
+manifest builder.

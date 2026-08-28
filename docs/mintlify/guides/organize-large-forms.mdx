@@ -1,0 +1,95 @@
+---
+title: "Organize large forms"
+description: "Use groups, rows, and flex to turn fifty variables into a form people can scan, and keep required fields visible at a glance."
+icon: "table-columns"
+---
+
+A deployment with a handful of variables renders fine as one field per line.
+A deployment with fifty needs structure, and `keel.yaml` provides three
+layout keys for it.
+
+## Groups
+
+Declare groups on the deployment and place variables in them:
+
+```yaml
+deployments:
+  cloud-gcp:
+    groups:
+      1: Google Cloud                       # shorthand: just a label
+      2:
+        label: Application
+        description: Settings the running service reads at boot.
+      3:
+        label: Sizing & retention
+        description: Rarely needed — the defaults are correct for most teams.
+        collapsed: true
+
+    variables:
+      GCP_PROJECT:    {group: 1}
+      GCP_REGION:     {group: 1}
+      GCP_SA_KEY_JSON: {group: 1, type: multiline, secret: true}
+      DOMAIN:         {group: 2, required: false}
+      ACME_EMAIL:     {group: 2, type: email}
+      MACHINE_TYPE:   {group: 3, type: select, default: e2-medium, options: [e2-small, e2-medium]}
+      IMAGE_TAG:      {deploy_time: true}    # ungrouped
+```
+
+How groups render:
+
+- Ungrouped variables come first, then groups in **ascending ID order** —
+  IDs are integers, and gaps are fine.
+- Each group is a collapsible section with its label, its description
+  (Markdown), a count of its variables, and — when any of its fields still
+  need input — a red **N required** chip. Collapsed groups stay scannable.
+- `collapsed: true` starts a group closed. A group containing a validation
+  error is always opened so the error is never hidden.
+- A group ID referenced by a variable without a `groups:` entry renders with
+  the label `Group <ID>`. A defined group that no variable references is a
+  validation error.
+
+## Rows
+
+Within a group (or among the ungrouped variables), `row` puts fields side by
+side:
+
+```yaml
+variables:
+  AWS_ACCESS_KEY_ID:     {group: 1, row: 1, secret: true}
+  AWS_SECRET_ACCESS_KEY: {group: 1, row: 1, secret: true, flex: 2}
+  AWS_REGION:            {group: 1, row: 2, type: select, options: [us-east-1, eu-west-1]}
+  AWS_ACCOUNT_ID:        {group: 1, row: 2}
+  DEPLOY_NOTES:          {group: 1, type: multiline, required: false}
+```
+
+- Variables sharing a row ID render on one line, in document order, rows in
+  ascending ID order.
+- Variables **without** a row come **after** the rows of their group, each
+  full width. Multi-line fields and long descriptions belong there.
+- Rows wrap on narrow screens, so nothing is lost on a phone.
+
+## Flex
+
+`flex` is a variable's share of its row's width, in the CSS `flex-grow`
+sense. Two fields with `flex: 1` and `flex: 2` split the row one third to two
+thirds. It defaults to `1`, must be positive, and requires `row`.
+
+## Keeping required fields obvious
+
+Layout helps navigation; markers help completion. Independently of layout:
+
+- Fields that need input (required, no default) carry a red asterisk.
+- Group headers count how many such fields they contain.
+- Optional fields say *optional*; fields with a default show the default
+  under the input.
+- The Variables card has a legend, and the deployment page counts missing
+  values per target.
+
+With these, someone opening a fifty-variable form for the first time can
+tell in seconds what they must fill in and what they can leave alone.
+
+## The same layout everywhere
+
+Groups, rows, and flex apply to the target form, to the deploy-time modal
+(only deploy-time variables appear there), and to the field order in the
+manifest builder. Declare the layout once.

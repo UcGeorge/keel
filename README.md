@@ -48,6 +48,27 @@ default follows the system preference):
 | Repos | the directory you run it in | connected via git URL or GitHub App |
 | CI | — | push-triggered auto-deploys via GitHub App webhooks |
 
+## Documentation
+
+- **Docs:** https://keel.mintlify.app — install, quickstart, concepts,
+  guides, and the complete `keel.yaml`, CLI, and Keel Cloud reference.
+- **Site:** https://ucgeorge.github.io/keel/
+- **Source of the docs:** [`docs/mintlify/`](docs/mintlify/) (Mintlify).
+
+## Install
+
+macOS and Linux:
+
+```console
+$ curl -fsSL https://ucgeorge.github.io/keel/install.sh | sh
+```
+
+Windows (PowerShell): `irm https://ucgeorge.github.io/keel/install.ps1 | iex`.
+With Go: `go install github.com/UcGeorge/keel/cmd/keel@latest`. Archives
+and checksums for every platform are on the
+[releases page](https://github.com/UcGeorge/keel/releases); the install
+scripts verify the SHA-256 of what they download.
+
 ## Quick start (local)
 
 Requirements: Docker running.
@@ -176,7 +197,24 @@ $ make test-short   # fast tests
 $ make test         # full suite: Docker engine tests + cloud E2E (Docker + disposable PostgreSQL)
 $ make css          # recompile Tailwind after editing templates (npm install once)
 $ make sqlc         # regenerate query code after editing queries.sql / migrations
+$ make docs         # preview the documentation site (npm i -g mint once)
+$ make site         # preview the landing page
 ```
+
+### Releasing
+
+Push a tag and the `Release` workflow does the rest — GoReleaser builds
+`keel` for macOS/Linux/Windows and `keel-cloud` for Linux, publishes the
+archives and `checksums.txt` to a GitHub release, and the `keel-cloud`
+image goes to `ghcr.io/ucgeorge/keel-cloud`:
+
+```console
+$ git tag v0.1.0 && git push origin v0.1.0
+```
+
+The landing page and install scripts publish to GitHub Pages from `site/`
+and `scripts/` on every push to `main` (`Pages` workflow; enable
+*Settings → Pages → Source: GitHub Actions* once).
 
 The full suite ends with a real end-to-end test: it boots PostgreSQL in a
 container, serves a git repository over HTTP, signs up, connects the repo,

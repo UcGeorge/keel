@@ -1,0 +1,86 @@
+---
+title: "Variable manifests"
+description: "A generated document that tells a client or another team exactly which values a deployment needs, why, and how to obtain each one."
+icon: "file-lines"
+---
+
+Before a deployment can run for a new client, someone has to hand over
+credentials, project IDs, and settings. The variable manifest is the document
+you send them. It is generated from `keel.yaml`, so it is always in step with
+what the deployment actually needs, and it is written for the person
+supplying the values — not for whoever wrote the steps.
+
+## What goes in
+
+Each variable's manifest entry comes from its declaration:
+
+```yaml
+GCP_SERVICE_ACCOUNT_KEY:
+  label: Service account key (JSON)
+  type: multiline
+  secret: true
+  description: A key for a service account allowed to deploy to Cloud Run.
+  manifest:
+    why: Authenticates the deployment with your GCP project.
+    how: |
+      **IAM & Admin → Service accounts** → create `keel-deploy` with the
+      *Cloud Run Admin* and *Service Account User* roles → Keys →
+      **Add key → JSON**. Paste the whole file.
+```
+
+The generated entry carries the label (or a `title` override), the type,
+whether it is sensitive, whether it is optional, its default, whether it is
+asked for at deploy time, any condition it depends on, the description, the
+**why**, the **how**, the allowed values of a select, and the format
+constraints in plain language ("Between 8 and 64 characters", "Must look
+like AKIAXXXXXXXXXXXXXXXX").
+
+A summary table at the top lists every value with its type, sensitivity, and
+whether it is required, followed by a note that sensitive values should be
+shared over a secure channel.
+
+## Which variables are included
+
+A variable is part of the default selection when it has a `manifest:` block
+(`include: true` is implied, and `include: false` opts out). Variables
+without a block are left out by default — internal switches and tuning
+knobs usually do not belong in a document for a client.
+
+The selection can be changed when generating: the UI builder has a checkbox
+per variable, and the CLI takes `--var` flags.
+
+## Generating a manifest
+
+<Tabs>
+  <Tab title="From the UI">
+    On a deployment page or a target page, open **Export variable manifest**.
+    Pick the variables, preview the result, and download it as Markdown or
+    as a standalone HTML file that renders without any tooling. Generating
+    from a target page names that target in the document header.
+  </Tab>
+  <Tab title="From the CLI">
+    ```console
+    $ keel manifest aws-production -o required-values.md
+    $ keel manifest aws-production --var AWS_ACCESS_KEY_ID --var AWS_REGION -f html -o values.html
+    $ keel manifest aws-production --project "Acme API"      # header title
+    ```
+
+    Without `-o` the document goes to standard output. See the
+    [CLI reference](/reference/cli#keel-manifest).
+  </Tab>
+</Tabs>
+
+## Writing good manifest text
+
+The person reading the manifest may have never seen your repository. Write
+`why` and `how` for them:
+
+- **why** — one or two sentences on what the value enables and what happens
+  if it is wrong.
+- **how** — the clicks or commands that produce the value, in the console
+  they use. Markdown works: bold the menu items, use code for identifiers.
+- Put the *format* in `validation` (with a `message`), not in prose; the
+  manifest renders it and the form enforces it.
+- Mark credentials `secret: true` so the manifest flags them as sensitive.
+
+The full list of keys is in the [manifest reference](/reference/manifest).

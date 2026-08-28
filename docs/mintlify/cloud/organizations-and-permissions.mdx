@@ -1,0 +1,56 @@
+---
+title: "Organizations and permissions"
+description: "Organizations, the owner/admin/member roles, the deploy and configure scopes, invites, and accounts in Keel Cloud."
+icon: "users"
+---
+
+## Organizations
+
+Signing up creates a **personal organization** for the new user. Anyone can
+create more organizations and invite people to them. A user can belong to
+many organizations and switches between them from the header. Repositories,
+targets, and runs belong to an organization.
+
+Owners can rename an organization and delete it from **Settings**; deleting
+removes its repositories, targets, values, and runs.
+
+## Roles and scopes
+
+Each member has a **role** — `owner`, `admin`, or `member` — and members
+may additionally hold two **scopes**: *deploy* and *configure*.
+
+| Capability | owner | admin | member |
+|---|---|---|---|
+| View repositories, targets, runs, and logs | ✓ | ✓ | ✓ |
+| Deploy and cancel runs | ✓ | ✓ | with the **deploy** scope |
+| Create targets, edit variables, delete targets | ✓ | ✓ | with the **configure** scope |
+| Reveal secret outputs | ✓ | ✓ | with either scope |
+| Connect repositories, change repository settings, sync, disconnect | ✓ | ✓ | — |
+| Invite members, edit member scopes, remove members | ✓ | ✓ (members only) | — |
+| Invite or promote admins, change roles | ✓ | — | — |
+| Rename or delete the organization | ✓ | — | — |
+
+Members with neither scope are viewers. The organization always keeps at
+least one owner; the last owner cannot be demoted or removed.
+
+<Tip>
+  The typical client setup: the agency's engineers are admins; the client's
+  operator is a member with the **deploy** scope and, if they also supply
+  credentials, the **configure** scope. They can run the deployment and fill
+  in the form, and nothing else.
+</Tip>
+
+## Invites
+
+Invites are created on the **Members** page with an email address, a role,
+and scopes. Each produces a single-use link, valid for **14 days**, that you
+share out-of-band; Keel does not send email. Opening the link signs the
+person up (or in) and adds them to the organization. Pending invites can be
+revoked.
+
+## Accounts and sessions
+
+Accounts sign in with email and password. Passwords are hashed with
+argon2id; sessions are opaque tokens with a 30-day expiry in HttpOnly,
+SameSite=Lax cookies, marked Secure when `KEEL_BASE_URL` is `https://`. The
+**Account** page changes name, email, and password.

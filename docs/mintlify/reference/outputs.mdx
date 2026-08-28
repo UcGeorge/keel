@@ -1,0 +1,70 @@
+---
+title: "Outputs"
+description: "The outputs mapping: keys, capture semantics, secret handling, limits, and where captured values appear."
+icon: "arrow-right-from-bracket"
+---
+
+```yaml
+outputs:
+  SERVICE_URL:
+    label: Service URL              # default: the name
+    description: Where the API answers.   # Markdown
+  DB_PASSWORD:
+    secret: true
+  IMAGE:                            # bare name: all defaults
+```
+
+<ParamField path="label" type="string" default="the name">
+  Shown on the run page and the target page.
+</ParamField>
+
+<ParamField path="description" type="string (Markdown)">
+  Shown under the value.
+</ParamField>
+
+<ParamField path="secret" type="boolean" default="false">
+  Store encrypted and render masked behind a reveal control. Required when
+  the output shares a secret variable's name.
+</ParamField>
+
+Names follow variable naming rules (`[A-Z][A-Z0-9_]*`, not starting with
+`KEEL_`) and are unique.
+
+## Capture semantics
+
+- Outputs are read from the container's environment **after the last step
+  succeeds**. Any variable present in the environment then is eligible —
+  `export`ed in any step, or an input variable passed through.
+- Exports carry across steps, so a value can be set early and refined later;
+  the final value is captured.
+- A declared output absent from the environment shows as *not set*.
+- Failed and canceled runs capture nothing.
+- Values are captured on a dedicated channel and never appear in the
+  visible log.
+
+## Secret handling
+
+1. `secret: true` outputs are stored encrypted and rendered masked.
+2. A non-secret output whose value contains any secret input's value is
+   treated as secret.
+3. An output named like a secret variable must declare `secret: true`;
+   validation rejects the configuration otherwise.
+4. `keel deploy` prints secret outputs as `•••`; in Keel Cloud only members
+   with the deploy or configure scope receive secret values.
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| Single output value | 64 KiB; larger values are skipped with a log note |
+| Log line length | 1 MB |
+
+## Where values appear
+
+| Place | What |
+|---|---|
+| Run page | All declared outputs of that run, set or not set, with copy buttons |
+| Target page, *Latest outputs* | Outputs of the most recent successful run, linked to it |
+| `keel deploy` | Non-secret outputs, printed after *Deployment succeeded* |
+
+Values are kept per run; older runs keep theirs.

@@ -1,0 +1,67 @@
+---
+title: "Embed Keel in a repository"
+description: "Commit the keel CLI into a project so every collaborator can run the Keel UI with make, without installing anything."
+icon: "box-archive"
+---
+
+Some teams cannot ask every collaborator to install a tool, and some
+projects want the deployment experience to travel with the code. `make embed`
+vendors the `keel` CLI into another repository: cross-compiled binaries for
+every platform, and a managed block of Makefile targets that picks the right
+one.
+
+## Embedding
+
+From a checkout of the Keel source repository:
+
+```console
+$ make embed DIR=../your-project
+```
+
+This:
+
+1. Builds `keel` for macOS, Linux, and Windows on amd64 and arm64 into
+   `your-project/.keel/bin/`, with a `SHA256SUMS` file.
+2. Writes `your-project/.keel/.gitignore` so Keel's machine-local state
+   (`dev.db`) stays out of version control while `bin/` is committable, and
+   removes a root-level `.keel/` ignore line that would override it.
+3. Adds a marker-delimited block of `keel-*` targets to
+   `your-project/Makefile`, creating the file if needed.
+
+Commit `.keel/bin`, `.keel/.gitignore`, and the `Makefile`. The binaries are
+a few tens of megabytes in total.
+
+## Using the embedded CLI
+
+Anyone who clones the project can run:
+
+```console
+$ make keel              # CLI help
+$ make keel-dev          # the Keel UI for this repository
+$ make keel-validate     # validate keel.yaml
+$ make keel-deploy ARGS="production -t client-acme"
+$ make keel-manifest ARGS="production -o values.md"
+$ make keel-run ARGS="init"          # any other keel command
+```
+
+The targets detect the host OS and architecture and call the matching binary
+from `.keel/bin/`. Pass flags through `ARGS`, for example
+`make keel-dev ARGS="-p 3500"`.
+
+## Updating
+
+Re-run `make embed DIR=../your-project` from a newer Keel checkout. The
+binaries are rebuilt and the managed Makefile block is replaced in place —
+everything else in the Makefile is left alone. Commit the result.
+
+## When to embed and when to install
+
+| Embed | Install |
+|---|---|
+| Collaborators should not install anything. | Individuals deploy many projects. |
+| The project must stay deployable from a fresh clone, offline. | Keeping binaries out of git matters more. |
+| You control the Keel version per project. | You want `keel` to upgrade independently of any repository. |
+
+Both give the same `keel`; the choice is about distribution. Keel Cloud is
+the third option: nobody installs anything, and the deployment runs on a
+server. See [Keel Cloud](/cloud/overview).

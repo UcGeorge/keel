@@ -1,0 +1,194 @@
+---
+title: "Author a deployment"
+description: "Turn an existing deploy script and its README section into a keel.yaml deployment that anyone can run."
+icon: "pen-ruler"
+---
+
+This guide takes a typical undocumented deployment — a shell script, a
+handful of environment variables, and a README that says which CLIs to
+install — and turns it into a Keel deployment. The example deploys an API to
+AWS ECS, but the shape is the same for any target.
+
+## Before you start
+
+Collect three things from the person who deploys today:
+
+1. **The tools** they have installed: `aws`, `docker`, `jq`, a language
+   runtime for the scripts.
+2. **The commands**, in order, including the login.
+3. **The inputs**: every environment variable or prompt, which ones are
+   secret, which ones differ per client or environment, and where each value
+   comes from.
+
+<Steps>
+  <Step title="Define the environment">
+    Write a Dockerfile that installs the tools. Start from the vendor's CLI
+    image when there is one:
+
+    ```dockerfile deploy/aws.Dockerfile
+    FROM amazon/aws-cli:2.22.0
+
+    RUN yum install -y jq git && yum clean all
+
+    # Keel mounts the repository at /workspace and runs every step there.
+    WORKDIR /workspace
+    ENTRYPOINT []
+    ```
+
+    <Note>
+      Images whose `ENTRYPOINT` is the CLI itself (as `amazon/aws-cli` is)
+      need `ENTRYPOINT []` so Keel can run a shell in them.
+    </Note>
+
+    Pin versions. The whole point is that the deployment behaves the same on
+    every machine, and "latest" defeats that. More patterns are in
+    [Environment images](/guides/environment-images).
+  </Step>
+  <Step title="Write the steps">
+    Keep the steps short and keep the logic in scripts that live in the
+    repository. Make the login the first step.
+
+    ```yaml keel.yaml
+    version: 1
+
+    deployments:
+      aws-production:
+        description: Deploy the API to AWS ECS in the client's account.
+        long_description: |
+          Builds the API image, pushes it to the client's ECR registry, and
+          updates the ECS service. Takes about four minutes. Nothing here
+          touches the database.
+
+        environment:
+          dockerfile: deploy/aws.Dockerfile
+
+        steps:
+          - name: Configure AWS credentials
+            run: |
+              aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+              aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+              aws configure set region "$AWS_REGION"
+              aws sts get-caller-identity
+          - name: Build and push image
+            run: ./deploy/aws/push-image.sh
+          - name: Update service
+            run: ./deploy/aws/update-service.sh
+    ```
+
+    `aws sts get-caller-identity` at the end of the login step fails fast
+    with a clear message when the credentials are wrong, before anything is
+    built.
+  </Step>
+  <Step title="Declare the variables">
+    One declaration per input. Give each a type, mark the secrets, and write
+    the text a client will read.
+
+    ```yaml keel.yaml
+        variables:
+          AWS_ACCESS_KEY_ID:
+            label: AWS Access Key ID
+            secret: true
+            validation:
+              pattern: "AKIA[0-9A-Z]{16}"
+              message: Must look like AKIAXXXXXXXXXXXXXXXX
+            manifest:
+              why: Authenticates the deployment with your AWS account.
+              how: |
+                In the AWS console: **IAM → Users → Add user**, enable
+                *programmatic access*, attach the `keel-deploy` policy we
+                provided, and copy the access key ID.
+          AWS_SECRET_ACCESS_KEY:
+            label: AWS Secret Access Key
+            secret: true
+            manifest:
+              why: The second half of the AWS credential pair.
+              how: Shown once when the access key is created — store it safely.
+          AWS_REGION:
+            label: Region
+            type: select
+            default: us-east-1
+            options:
+              - {value: us-east-1, label: US East (N. Virginia)}
+              - {value: eu-west-1, label: Europe (Ireland)}
+              - {value: ap-southeast-1, label: Asia Pacific (Singapore)}
+          DESIRED_COUNT:
+            label: Service replicas
+            type: number
+            required: false
+            default: "2"
+            validation: {min: 1, max: 20}
+          NOTIFY_EMAIL:
+            label: Notification email
+            type: email
+            required: false
+            description: Deployment reports are sent here after every run.
+    ```
+
+    A few decisions worth making deliberately:
+
+    - **Use `select` for anything with a fixed set of values.** A region
+      typo is a wasted run; a dropdown is not.
+    - **Give safe defaults** to tuning values so the form is short for the
+      common case.
+    - **Put the format in `validation`.** The form shows it as a hint, the
+      manifest renders it, and Keel enforces it.
+    - **Add a `manifest` block** to every value a client must supply, and
+      leave it off internal switches.
+  </Step>
+  <Step title="Add outputs">
+    If the deployment produces something people ask for afterwards, export
+    it and declare it:
+
+    ```yaml keel.yaml
+        steps:
+          - name: Update service
+            run: |
+              ./deploy/aws/update-service.sh
+              export SERVICE_URL="$(./deploy/aws/service-url.sh)"
+
+        outputs:
+          SERVICE_URL:
+            label: Service URL
+            description: The load balancer address the API answers on.
+    ```
+  </Step>
+  <Step title="Validate and try it">
+    ```console
+    $ keel validate
+    ✓ keel.yaml is valid
+      deployment aws-production           3 step(s), 5 variable(s)
+    $ keel dev
+    ```
+
+    Create a target for a test account, fill in the form, and deploy. Fix
+    the steps until the run is green. Because Keel Dev mounts your working
+    tree, you can edit a script and deploy again without committing.
+  </Step>
+  <Step title="Hand it over">
+    Export the manifest and send it to whoever supplies the real values:
+
+    ```console
+    $ keel manifest aws-production -o acme-required-values.md
+    ```
+
+    Commit `keel.yaml` and `deploy/`. From now on the deployment is code:
+    reviewed in pull requests, versioned with the application, and runnable by
+    anyone with a browser.
+  </Step>
+</Steps>
+
+## Practices that hold up
+
+- **Idempotent steps.** A re-run after a failure should converge, not
+  duplicate. Most cloud CLIs are idempotent by nature; scripts that create
+  resources should check first.
+- **Print progress, not secrets.** Secret values are masked in logs, but
+  derived values (a URL that embeds a token) are not unless they contain the
+  secret verbatim. Do not `echo` credentials.
+- **One deployment per operation.** A `database-migrate` deployment next to
+  `aws-production` is clearer than a `RUN_MIGRATIONS` boolean, unless the
+  operations genuinely share a procedure — then a deploy-time `select` is
+  the right tool.
+- **Test the environment image in CI.** A failing `docker build` is a
+  failing deploy; a quick `docker build -f deploy/aws.Dockerfile .` in CI
+  catches broken package pins early.

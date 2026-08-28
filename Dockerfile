@@ -4,13 +4,15 @@
 # repositories), and the docker CLI (deployment runs talk to the host's
 # Docker daemon via the mounted socket — see docker-compose.yml).
 
-FROM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
-RUN go build -trimpath \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath \
     -ldflags "-X github.com/UcGeorge/keel/internal/version.Version=${VERSION}" \
     -o /out/keel-cloud ./cmd/keel-cloud
 

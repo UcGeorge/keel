@@ -1,0 +1,72 @@
+---
+title: "Outputs"
+description: "Outputs are environment variables captured at the end of a successful run — a service URL, an image reference, a generated password — kept per run and shown with copy buttons."
+icon: "arrow-right-from-bracket"
+---
+
+A deployment often produces information the team needs afterwards: the URL
+the service answers on, the exact image that was rolled out, a database
+password Terraform generated. Outputs make those values first-class instead
+of something to fish out of a log.
+
+## Declaring and setting outputs
+
+Declare outputs under `outputs:` and `export` them from any step:
+
+```yaml
+steps:
+  - name: Deploy
+    run: |
+      ./deploy.sh
+      export SERVICE_URL="$(terraform output -raw service_url)"
+      export DB_PASSWORD="$(terraform output -raw db_password)"
+
+outputs:
+  SERVICE_URL:
+    label: Service URL
+    description: Where the API answers.
+  DB_PASSWORD:
+    secret: true
+```
+
+Outputs are captured from the container's environment **at the end of a
+fully successful run**. Because exported variables carry across steps, an
+output can be set in one step and refined in a later one; the final value
+wins. A declared output that is not set when the run ends shows as *not set*.
+Failed and canceled runs produce no outputs.
+
+The output name follows variable naming rules and may not start with `KEEL_`.
+
+## Where outputs appear
+
+- On the **run page**, after the run succeeds.
+- On the **target page** under *Latest outputs*, for the most recent
+  successful run, with a link to that run.
+- In the terminal, when the run came from `keel deploy`.
+
+Every value has a copy button. Values are stored per run, so the history
+keeps each run's outputs, not only the latest.
+
+## Secret outputs
+
+`secret: true` stores the value encrypted and renders it masked as
+`••••••••` behind a reveal control. Three rules keep credentials from leaking
+by accident:
+
+- A value that **contains a secret input's value** is treated as secret even
+  when the output is not declared secret.
+- An output that **shares a secret variable's name** must declare
+  `secret: true`; validation rejects the configuration otherwise.
+- `keel deploy` prints secret outputs as `•••` and points at the UI for the
+  value.
+
+In Keel Cloud, secret output values are only sent to members with the
+**deploy** or **configure** scope; viewers see the masked placeholder without
+a reveal control.
+
+## Limits
+
+A single output value is capped at 64 KiB; larger values are skipped with a
+note in the log. Values travel from the container to Keel on a dedicated
+channel and never pass through the visible log stream, so a secret output
+does not need to be masked from the log — it is never in it.

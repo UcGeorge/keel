@@ -1,0 +1,105 @@
+---
+title: "What is Keel?"
+sidebarTitle: "Introduction"
+description: "Keel turns the tribal knowledge of how a project deploys into a keel.yaml that anyone on the team can run through a web UI."
+icon: "anchor"
+---
+
+Every project has one person who really knows how to deploy it: the order of
+the commands, the CLIs that need to be installed, the six environment
+variables, the section of the README that says *"then run this script"*.
+When that person is on holiday, nobody deploys.
+
+Keel moves that knowledge out of people's heads and into a file. A
+`keel.yaml` at the root of the repository describes each **deployment**: the
+container image the steps run in, the ordered **steps**, and the typed,
+validated **variables** the steps need. From that file Keel renders a proper
+form, stores each **target's** values encrypted, runs the steps in Docker with
+live logs, and captures **outputs** when a run succeeds.
+
+The people who press the button do not need the tools, the credentials, or
+the repository. They need a browser.
+
+```yaml keel.yaml
+version: 1
+
+deployments:
+  aws-production:
+    description: Deploy the API to AWS ECS.
+    environment:
+      dockerfile: deploy/aws.Dockerfile
+    steps:
+      - name: Authenticate
+        run: ./deploy/aws-login.sh
+      - name: Deploy
+        run: ./deploy/release.sh
+    variables:
+      AWS_ACCESS_KEY_ID:
+        secret: true
+        validation: {pattern: "AKIA[0-9A-Z]{16}"}
+      AWS_REGION:
+        type: select
+        default: us-east-1
+        options: [us-east-1, {value: eu-west-1, label: Europe (Ireland)}]
+```
+
+## The building blocks
+
+<Columns cols={2}>
+  <Card title="Deployments" icon="layer-group" href="/concepts/deployments-and-environments">
+    Defined in `keel.yaml` the way services are defined in a compose file. Each names its environment, its steps, and its variables.
+  </Card>
+  <Card title="Variables" icon="sliders" href="/concepts/variables">
+    Declared like Terraform inputs: typed, validated, optionally secret. Keel renders the form, so email fields, dropdowns, and number ranges come for free.
+  </Card>
+  <Card title="Targets" icon="bullseye" href="/concepts/targets-and-runs">
+    A concrete place a deployment goes: a client, an environment, a region. Each keeps its own encrypted values and its own run history.
+  </Card>
+  <Card title="Runs" icon="play" href="/concepts/targets-and-runs#runs">
+    Execute the steps inside the environment container with the repository mounted and every variable exported. Live logs, per-step status, cancellation, secret masking.
+  </Card>
+  <Card title="Outputs" icon="arrow-right-from-bracket" href="/concepts/outputs">
+    Environment variables captured when a run succeeds — a service URL, an image reference, a rotated key — shown with copy buttons and stored per run.
+  </Card>
+  <Card title="Variable manifests" icon="file-lines" href="/concepts/variable-manifests">
+    Generated documents you hand to whoever must supply the values, explaining what each one is, why it is needed, and how to get it.
+  </Card>
+</Columns>
+
+## Two editions, one engine
+
+Keel ships as two binaries that share the same engine and the same UI.
+
+| | **Keel Dev** (`keel dev`) | **Keel Cloud** (`keel-cloud`) |
+|---|---|---|
+| Where it runs | your machine, one repository | your server, many repositories |
+| State | `.keel/dev.db` in the repository (SQLite) | PostgreSQL |
+| Users | just you | organizations, roles, scopes, invites |
+| Repositories | the directory you run it in | connected by git URL or through a GitHub App |
+| Continuous deployment | — | push-triggered auto-deploys via GitHub App webhooks |
+
+Start with Keel Dev to author and test a `keel.yaml`. Move to Keel Cloud when
+more than one person needs to deploy, or when deploys should happen on push.
+
+<Note>
+  Keel executes deployment steps with Docker. Runs happen on the machine that
+  runs Keel — your laptop for Keel Dev, the server for Keel Cloud — never on a
+  hosted service you do not control.
+</Note>
+
+## Where to go next
+
+<Columns cols={2}>
+  <Card title="Install" icon="download" href="/install">
+    Get the `keel` command onto your machine with one line.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    From an empty repository to a deploy with live logs in ten minutes.
+  </Card>
+  <Card title="keel.yaml reference" icon="file-code" href="/reference/keel-yaml">
+    Every key, every default, every validation rule.
+  </Card>
+  <Card title="Keel Cloud" icon="cloud" href="/cloud/overview">
+    Self-host the multi-user edition, or let Keel deploy it for you on Google Cloud.
+  </Card>
+</Columns>

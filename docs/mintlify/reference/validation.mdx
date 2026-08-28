@@ -1,0 +1,130 @@
+---
+title: "Validation"
+description: "Value validation keys, the messages they produce, and the full set of rules keel validate applies to a configuration."
+icon: "circle-check"
+---
+
+Keel validates in two places. **Value validation** checks what someone typed
+into a variable, in the form and again before a run. **Configuration
+validation** checks `keel.yaml` itself.
+
+## Value validation
+
+```yaml
+validation:
+  pattern: "AKIA[0-9A-Z]{16}"                 # RE2, must match the whole value
+  message: Must look like AKIAXXXXXXXXXXXXXXXX  # replaces the default pattern error
+  min: 1                                      # numbers, inclusive
+  max: 20
+  min_length: 8                               # text-like types, in bytes
+  max_length: 64
+```
+
+<ParamField path="pattern" type="string">
+  An RE2 regular expression. It is anchored — the *whole* value must match —
+  so write `[a-z]+`, not `^[a-z]+$`. Allowed on every type except `boolean`
+  and `select`.
+</ParamField>
+
+<ParamField path="message" type="string">
+  The error shown when the pattern does not match, and the format hint
+  rendered under the field and in the manifest. Without it the error reads
+  *must match pattern …*.
+</ParamField>
+
+<ParamField path="min" type="number">
+  Inclusive lower bound. `number` type only.
+</ParamField>
+
+<ParamField path="max" type="number">
+  Inclusive upper bound. `number` type only. Must not be below `min`.
+</ParamField>
+
+<ParamField path="min_length" type="integer">
+  Minimum length in bytes. `text`, `multiline`, `email`, `url` only; must be
+  at least 0.
+</ParamField>
+
+<ParamField path="max_length" type="integer">
+  Maximum length in bytes. Same types; must not be below `min_length`.
+</ParamField>
+
+An empty value always passes value validation — whether a value is *needed*
+is a separate check (required, no default, active). A declared `default`
+must itself pass the variable's validation.
+
+### Where it runs, and what you see
+
+- **Under the field, before typing:** the constraints as a hint, so the
+  format is known up front.
+- **On save:** every field is validated; valid fields are saved immediately
+  and invalid ones are reported inline with the submitted text preserved.
+- **Before a deploy:** the merged configuration and deploy-time values are
+  checked; problems block the run and are listed on the target page (or
+  inside the modal for deploy-time variables).
+- **In `keel deploy`:** problems are printed and the command exits 1.
+
+### Messages
+
+| Check | Message |
+|---|---|
+| Missing required value | `is required` |
+| `number` does not parse | `must be a number` |
+| Below `min` / above `max` | `must be at least N` / `must be at most N` |
+| Invalid `email` | `must be a valid email address` |
+| Invalid `url` | `must be a valid URL including the scheme (e.g. https://example.com)` |
+| `boolean` not true/false | `must be true or false` |
+| `select` value not an option | `must be one of the listed options` |
+| Shorter than `min_length` / longer than `max_length` | `must be at least N characters` / `must be at most N characters` |
+| `pattern` mismatch | the `message`, or `must match pattern P` |
+| Saved value for an undeclared variable | `is not declared in this deployment's variables` |
+
+## Configuration rules
+
+`keel validate`, Keel Dev on every page load, and Keel Cloud on every sync
+apply these rules and report every violation at once with its path.
+
+**Document**
+
+- `version` is present and equals `1`.
+- Only `version` and `deployments` at the top level; no duplicate keys.
+- At least one deployment.
+
+**Deployment**
+
+- Name is lowercase DNS-label style, at most 63 characters, unique.
+- `environment.dockerfile` is present and a relative path inside the
+  repository; `environment.context` likewise.
+- At least one step; every step has a non-empty `name` and `run`.
+- Only the known keys: `description`, `long_description`, `groups`,
+  `environment`, `steps`, `variables`, `outputs`.
+- Every defined group is referenced by at least one variable.
+
+**Variable**
+
+- Name matches `[A-Z][A-Z0-9_]*`, does not start with `KEEL_`, unique.
+- `type` is one of the seven types.
+- `select` has at least one option; other types have none. Option values
+  are non-empty and unique.
+- Secrets have no `default` and are not `boolean` or `select`.
+- `pattern` compiles; `min` ≤ `max`; `min_length` ≥ 0 and ≤ `max_length`.
+- `min`/`max` only on `number`; `min_length`/`max_length` only on text-like
+  types; no `pattern` on `boolean` or `select`.
+- `flex` is positive and accompanied by `row`.
+- A `default` satisfies the variable's own validation.
+
+**Condition (`when`)**
+
+- Exactly one operator; `var` present.
+- `var` names a declared variable other than the variable itself.
+- A configuration variable does not depend on a deploy-time variable.
+- `gt`/`gte`/`lt`/`lte` operands are numeric; `in` has at least one value.
+- `eq`/`in` operands against a `select` are among its options.
+- No dependency cycles.
+
+**Output**
+
+- Name matches variable naming rules and does not start with `KEEL_`;
+  unique.
+- An output sharing a secret variable's name declares `secret: true`.
+- Only `label`, `description`, `secret`.

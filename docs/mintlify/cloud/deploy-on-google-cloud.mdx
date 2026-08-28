@@ -1,0 +1,161 @@
+---
+title: "Deploy Keel Cloud on Google Cloud"
+sidebarTitle: "Deploy on Google Cloud"
+description: "Keel deploys itself: the cloud-gcp deployment in Keel's own repository provisions a production Keel Cloud on one GCE VM, TLS included, for about $35 a month."
+icon: "google"
+---
+
+The Keel repository's own `keel.yaml` contains a deployment named
+`cloud-gcp`. Run it with Keel Dev, fill in the form, press **Deploy**, and
+ten minutes later you have a Keel Cloud with automatic HTTPS, nightly
+backups, and IAP-only SSH. It is both a real installation path and a
+worked example of what a serious `keel.yaml` looks like.
+
+**Intended scale:** one company and a few of its clients — a handful of
+organizations, tens of users, a few deploys a day. The design optimizes for
+cost and operational simplicity, not horizontal scale.
+
+## Architecture
+
+```text
+                      ┌─ GCP project ─────────────────────────────────┐
+your team ── HTTPS ─▶ │  VM "keel-cloud" (e2-medium, static IP)       │
+                      │  ┌─────────┐  ┌────────────┐  ┌─────────────┐ │
+Let's Encrypt ◀─────▶ │  │  caddy  │─▶│ keel-cloud │─▶│ postgres 16 │ │
+                      │  └─────────┘  └─────┬──────┘  └──────┬──────┘ │
+                      │        Docker  ◀────┘ runs           │        │
+                      │  ───────────────────────────────────────────  │
+                      │  data disk: pgdata · checkouts · TLS certs    │
+                      │                                               │
+                      │  Artifact Registry ◀── Cloud Build (images)   │
+                      │  GCS: backups (nightly pg_dump) · tf state    │
+                      │  Secret Manager: db password · encryption key │
+                      └───────────────────────────────────────────────┘
+```
+
+Why a single VM: runs need a real Docker daemon, which rules out serverless
+containers, and Kubernetes is pure overhead at this scale. One VM with
+Docker is the honest fit, and everything on it is replaceable.
+
+- **caddy** terminates TLS with automatic Let's Encrypt certificates.
+- **A domain is optional.** Leave *Domain* empty and Terraform derives
+  `https://<ip-with-dashes>.sslip.io` from the static IP, live with a real
+  certificate as soon as the VM is up. Set the domain later and deploy again
+  to switch; the VM is replaced (about two minutes), data and IP survive.
+- **The data disk is separate from the VM.** Postgres data, checkouts, and
+  certificates live on `/mnt/keel-data`. The VM is disposable: when its
+  cloud-init changes, Terraform replaces it while the disk and IP stay.
+- **Images build on Cloud Build**, because Keel's own steps run in a
+  container without a Docker daemon. The free tier covers it.
+- **SSH only through IAP.** Port 22 is never open to the internet.
+- **Secrets never touch instance metadata.** The database password and the
+  at-rest encryption key sit in Secret Manager; the VM fetches them at first
+  boot with its own identity.
+- **Backups outlive everything.** Nightly `pg_dump` files go to a GCS bucket
+  Terraform does not own, so *destroy* cannot delete them; the destroy path
+  takes one final backup first.
+- **Disk hygiene is automated:** weekly `docker system prune`, Artifact
+  Registry keeps the ten most recent images, container logs are capped.
+
+## Cost
+
+Approximate monthly cost in `us-central1`:
+
+| Item | Cost |
+|---|---|
+| e2-medium VM (2 vCPU, 4 GB) | ~$24.50 |
+| Boot disk 40 GB + data disk 20 GB | ~$6.00 |
+| Static external IPv4 | ~$3.65 |
+| GCS, Artifact Registry, Secret Manager, egress | < $1.50 |
+| Cloud Build | free tier |
+| **Total** | **≈ $35** |
+
+Very light use fits on `e2-small` (≈ $22); heavy Terraform runs by clients
+may want `e2-standard-2` (≈ $60). Change the machine type in the target's
+variables and deploy — it applies with a short restart.
+
+## First deploy
+
+<Steps>
+  <Step title="Prepare the project">
+    Create a dedicated GCP project with billing enabled. Create a
+    `keel-deployer` service account, grant it **Owner** on that project, and
+    download a JSON key. A least-privilege role list is below if Owner is not
+    acceptable.
+  </Step>
+  <Step title="Open the deployment">
+    Clone the Keel repository, run `keel dev` in it, and open the
+    `cloud-gcp` deployment. Create a target, for example `production`.
+  </Step>
+  <Step title="Fill in the form">
+    The variables are grouped into *Google Cloud*, *Application*, and
+    *Sizing & retention*. Every field documents itself, and required ones are
+    marked. **Export variable manifest** produces a document for whoever
+    supplies the values. Generate the encryption key and database password
+    with `openssl rand -hex 32` and keep them somewhere safe.
+  </Step>
+  <Step title="Deploy">
+    Press **Deploy now**, keep *Action: Deploy* and *Mode: Full*. The first
+    run takes about ten minutes (API enablement plus VM boot) and ends with
+    the **Keel Cloud URL** and **Server IP** outputs. Pick *Plan* in the modal
+    to preview Terraform changes without applying anything.
+  </Step>
+  <Step title="Point DNS, if you set a domain">
+    Create an **A record** for the domain pointing at the Server IP. HTTPS
+    goes live a couple of minutes after DNS resolves; no second deploy is
+    needed. The `SITE_STATUS` output says where things stand. With no domain
+    the sslip.io URL is already live.
+  </Step>
+  <Step title="Sign in">
+    Open the URL, create the first account, and invite the team from the
+    **Members** page.
+  </Step>
+</Steps>
+
+Later deploys — a new Keel version, a size change — are **Deploy → Full**
+again: build, push, health-checked rollover, typically three minutes.
+
+## Operations
+
+- **Restore a backup** (`gs://<project>-keel-backups/pg/*.sql.gz`):
+
+  ```console
+  $ gcloud compute ssh keel-cloud --zone <zone> --tunnel-through-iap
+  $ gcloud storage cp gs://<project>-keel-backups/pg/keel-<ts>.sql.gz - \
+      | gunzip | sudo docker exec -i keel-db psql -U keel keel
+  ```
+
+- **Logs and status on the server:** `sudo docker logs keel-cloud`,
+  `sudo docker ps`, `systemctl list-timers keel-*`.
+- **Resize disks:** raise *Boot disk* or *Data disk*, deploy, then grow the
+  filesystem (`sudo resize2fs /dev/disk/by-id/google-keel-data` for the data
+  disk).
+- **Rotate the database password:** update the variable, deploy, then
+  `ALTER USER keel WITH PASSWORD '…'` inside Postgres and `sudo reboot` so
+  the VM re-reads its secrets. Rotating the encryption key is not supported.
+- **Destroy:** Deploy → *Destroy the infrastructure* → type `destroy`. A
+  final backup is taken; the VM, disks, IP, network, registry, and secrets
+  are removed. The backup and state buckets remain.
+- **Multiple environments:** each target keeps its own Terraform state under
+  a `keel-cloud/<target>` prefix, so a `staging` target with its own project
+  coexists with `production`.
+
+## Least-privilege deployer
+
+Instead of Owner, grant the deployer service account: `roles/compute.admin`,
+`roles/iam.serviceAccountAdmin`, `roles/iam.serviceAccountUser`,
+`roles/resourcemanager.projectIamAdmin`, `roles/artifactregistry.admin`,
+`roles/secretmanager.admin`, `roles/storage.admin`,
+`roles/cloudbuild.builds.editor`, `roles/serviceusage.serviceUsageAdmin`,
+`roles/compute.osAdminLogin`, and `roles/iap.tunnelResourceAccessor`.
+
+## Adding the GitHub App
+
+Push-triggered deploys need the GitHub App variables on the server. Add
+them to `/opt/keel/secrets.env` on the VM (`KEEL_GITHUB_APP_ID=…` and the
+rest, see [GitHub App](/cloud/github-app)) and apply with:
+
+```console
+$ sudo docker compose --project-directory /opt/keel \
+    --env-file /opt/keel/image.env -f /opt/keel/compose.yaml up -d
+```

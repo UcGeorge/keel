@@ -1,0 +1,111 @@
+# GoReleaser configuration — https://goreleaser.com
+#
+# Cut a release by pushing a tag:
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The release workflow (.github/workflows/release.yml) runs GoReleaser, which
+# builds the `keel` CLI for macOS, Linux, and Windows (amd64 + arm64) and the
+# `keel-cloud` server for Linux, publishes the archives and a checksums file
+# to the GitHub release, and generates release notes from the commit log.
+# scripts/install.sh downloads from that release.
+version: 2
+
+project_name: keel
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: keel
+    main: ./cmd/keel
+    binary: keel
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/UcGeorge/keel/internal/version.Version={{ .Tag }}
+
+  - id: keel-cloud
+    main: ./cmd/keel-cloud
+    binary: keel-cloud
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/UcGeorge/keel/internal/version.Version={{ .Tag }}
+
+archives:
+  # keel_0.1.0_darwin_arm64.tar.gz, keel_0.1.0_windows_amd64.zip, …
+  - id: keel
+    ids: [keel]
+    name_template: "keel_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+  # keel-cloud_0.1.0_linux_amd64.tar.gz
+  - id: keel-cloud
+    ids: [keel-cloud]
+    name_template: "keel-cloud_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))?!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  github:
+    owner: UcGeorge
+    name: keel
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Install
+
+    macOS and Linux:
+
+    ```sh
+    curl -fsSL https://ucgeorge.github.io/keel/install.sh | sh
+    ```
+
+    Windows (PowerShell):
+
+    ```powershell
+    irm https://ucgeorge.github.io/keel/install.ps1 | iex
+    ```
+
+    Or with Go: `go install github.com/UcGeorge/keel/cmd/keel@{{ .Tag }}`
+
+    The `keel-cloud` container image for this release is
+    `ghcr.io/ucgeorge/keel-cloud:{{ .Tag }}`.

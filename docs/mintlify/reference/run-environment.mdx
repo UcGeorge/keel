@@ -1,0 +1,81 @@
+---
+title: "Run environment"
+description: "The exact contract a step can rely on: the container, the shell, the mounted repository, the exported variables, and how failure, exports, and outputs behave."
+icon: "cube"
+---
+
+## The container
+
+| | |
+|---|---|
+| Image | Built from `environment.dockerfile` with `environment.context`, tagged `keel/dev-<deployment>` (Keel Dev) or `keel/cloud-<repo>-<deployment>` (Keel Cloud) |
+| Container name | `keel-run-<run-id>` |
+| Repository | Mounted read-write at `/workspace`; also the working directory |
+| Source of the repository | Keel Dev: the working tree you ran `keel dev` in. Keel Cloud: a fresh shallow clone of the connected branch, deleted after the run. `keel deploy`: the current directory. |
+| Shell | `/bin/sh` |
+| Docker inside | None. There is no daemon in the container. |
+| Lifetime | Removed when the run ends or is canceled |
+
+## Environment variables
+
+Every **active** variable is exported by name. See the
+[exposure rules](/reference/variable-types#exposure-rules) for how empty,
+optional, boolean, and inactive variables resolve. In addition:
+
+| Variable | Value |
+|---|---|
+| `KEEL_DEPLOYMENT` | The deployment name |
+| `KEEL_TARGET` | The target name, or `cli` for `keel deploy` without `--target` |
+| `KEEL_RUN_ID` | The run's identifier |
+
+User variables may not start with `KEEL_`.
+
+## Step execution
+
+Keel assembles one script from the steps and runs it in the container:
+
+- **Order.** Steps run in declaration order.
+- **Isolation.** Each step's `run` executes in its own subshell. Working
+  directory changes, `set` options, functions, and unexported shell
+  variables do not leak into the next step.
+- **Exports carry forward.** After each step — including a failing one —
+  the step's exported environment is snapshotted and restored at the start
+  of the next, so `export FOO=…` in step 2 is visible in step 3 and to output
+  capture.
+- **Failure.** The script runs under `set -e`, and each step's subshell
+  inherits it: the first command in a `run` block that exits non-zero ends
+  the step, the step is marked failed, and every later step is skipped. Keel
+  does not retry and does not roll back.
+- **Status.** Each step reports pending, running, succeeded, failed, or
+  skipped, driven by marker lines the engine emits and consumes; they never
+  appear in the visible log.
+
+The usual `set -e` exemptions apply inside a block: a command in an `if`
+condition, on the left of `&&` or `||`, or anywhere in a pipeline except
+its last command does not end the step when it fails. Append `|| true` to a
+command that is allowed to fail, and check the exit of pipelines explicitly
+(`set -o pipefail` works in Alpine's `ash` and in `bash`, not in `dash`).
+
+## Logs
+
+Standard output and standard error of the build and of the steps stream
+line by line to the run page and, for `keel deploy`, to the terminal. Before
+a line is stored or shown, every secret value is replaced with `•••`.
+
+A single line longer than 1 MB cannot be processed. Keel logs
+`[keel] log line dropped` and discards the rest of that stream (standard
+output or standard error) for the remainder of the run; the run itself
+continues and its exit status is unaffected. Avoid dumping large blobs on
+one line — pipe them through `fold` or write them to a file.
+
+## Outputs
+
+At the end of a run in which every step succeeded, each declared output is
+read from the final environment and captured — up to 64 KiB per value, on a
+channel separate from the log. See the [outputs reference](/reference/outputs).
+
+## Cancellation
+
+Cancel (UI) or Ctrl+C (`keel deploy`) force-removes the container. The run
+is marked canceled, the running step failed, later steps skipped. Whatever
+the steps already did in external systems remains.

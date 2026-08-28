@@ -1,0 +1,312 @@
+---
+title: "keel.yaml"
+description: "The complete schema of keel.yaml: every key, its type, its default, and the rules validation enforces."
+icon: "file-code"
+---
+
+`keel.yaml` (or `keel.yml`) lives at the repository root. Keel Dev re-reads
+it on every page load; Keel Cloud reads it from the connected branch on every
+sync and push. Unknown keys anywhere in the file are validation errors, so a
+typo never silently does nothing.
+
+## Top level
+
+```yaml
+version: 1          # required; this build supports version 1
+deployments:        # required; at least one
+  <name>: …
+```
+
+<ParamField path="version" type="integer" required>
+  Schema version. Must be `1`.
+</ParamField>
+
+<ParamField path="deployments" type="mapping" required>
+  Deployment name → [deployment](#deployment). Names are lowercase
+  DNS-label style: `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, at most 63 characters,
+  unique.
+</ParamField>
+
+## Deployment
+
+```yaml
+deployments:
+  aws-production:
+    description: Deploy the API to AWS ECS.
+    long_description: |
+      Builds and pushes the image, then updates the ECS service.
+    groups: {…}
+    environment: {…}
+    steps: […]
+    variables: {…}
+    outputs: {…}
+```
+
+<ParamField path="description" type="string">
+  One-line plain-text summary shown on deployment cards, in lists, and at
+  the top of generated manifests.
+</ParamField>
+
+<ParamField path="long_description" type="string (Markdown)">
+  Full description rendered on the deployment's page.
+</ParamField>
+
+<ParamField path="groups" type="mapping">
+  Group ID (integer) → label string or [group definition](/reference/layout#groups).
+  Every defined group must be referenced by at least one variable.
+</ParamField>
+
+<ParamField path="environment" type="mapping" required>
+  Where the steps run. See [environment](#environment).
+</ParamField>
+
+<ParamField path="steps" type="list" required>
+  Ordered list of [steps](#step); at least one.
+</ParamField>
+
+<ParamField path="variables" type="mapping">
+  Variable name → [variable definition](#variable). A bare `NAME:` with no
+  body declares a required text variable with all defaults.
+</ParamField>
+
+<ParamField path="outputs" type="mapping">
+  Output name → [output definition](/reference/outputs). A bare `NAME:` uses
+  all defaults.
+</ParamField>
+
+### Environment
+
+<ParamField path="environment.dockerfile" type="string" required>
+  Path to the Dockerfile, relative to the repository root and inside it
+  (`..` and absolute paths are rejected). Install every tool the steps need
+  in this image.
+</ParamField>
+
+<ParamField path="environment.context" type="string" default=".">
+  Docker build context, relative to the repository root and inside it.
+</ParamField>
+
+### Step
+
+```yaml
+steps:
+  - name: Authenticate
+    run: |
+      printf '%s' "$GCP_KEY" > /tmp/sa.json
+      gcloud auth activate-service-account --key-file=/tmp/sa.json
+  - name: Deploy
+    run: ./deploy.sh
+```
+
+<ParamField path="name" type="string" required>
+  Short label shown next to the step's status.
+</ParamField>
+
+<ParamField path="run" type="string" required>
+  Shell script executed with `/bin/sh` inside the environment container.
+  May be multi-line. Semantics are in the
+  [run environment reference](/reference/run-environment).
+</ParamField>
+
+### Variable
+
+```yaml
+variables:
+  NOTIFY_EMAIL:
+    label: Notification email
+    type: email
+    secret: false
+    required: true
+    description: |
+      Deployment reports are sent here.
+    placeholder: ops@company.com
+    default: ""
+    options: […]
+    validation: {…}
+    manifest: {…}
+    group: 2
+    row: 1
+    flex: 2
+    deploy_time: false
+    when: {var: ACTION, eq: deploy}
+```
+
+Names match `[A-Z][A-Z0-9_]*` and may not start with `KEEL_`.
+
+<ParamField path="label" type="string" default="the name">
+  Form label and manifest heading.
+</ParamField>
+
+<ParamField path="type" type="string" default="text">
+  One of `text`, `multiline`, `number`, `email`, `url`, `boolean`, `select`.
+  See [variable types](/reference/variable-types).
+</ParamField>
+
+<ParamField path="secret" type="boolean" default="false">
+  Store encrypted, render as a password field, mask in logs. Not allowed
+  with a `default`, or for `boolean` and `select` types.
+</ParamField>
+
+<ParamField path="required" type="boolean" default="true">
+  Whether a value (or default) must be present before a deploy. Inactive
+  variables (see `when`) are never required.
+</ParamField>
+
+<ParamField path="description" type="string (Markdown)">
+  Shown under the form field and in the manifest.
+</ParamField>
+
+<ParamField path="placeholder" type="string">
+  Form placeholder. A non-secret field without one shows the default, when
+  there is one.
+</ParamField>
+
+<ParamField path="default" type="string">
+  Pre-filled value; also the value used when the field is left blank. Must
+  itself satisfy the variable's validation. Not allowed for secrets. Write
+  numbers and booleans as strings (`"2"`, `"true"`).
+</ParamField>
+
+<ParamField path="options" type="list">
+  Allowed values for `type: select`; required for that type and forbidden
+  for others. Each entry is a string or `{value, label}`; values must be
+  non-empty and unique.
+</ParamField>
+
+<ParamField path="validation" type="mapping">
+  `pattern`, `message`, `min`, `max`, `min_length`, `max_length`. See
+  [validation](/reference/validation).
+</ParamField>
+
+<ParamField path="manifest" type="mapping">
+  `include`, `title`, `why`, `how`. Presence of the block includes the
+  variable in the default manifest selection. See [manifest](/reference/manifest).
+</ParamField>
+
+<ParamField path="group" type="integer">
+  Layout: the group this variable belongs to. See [layout](/reference/layout).
+</ParamField>
+
+<ParamField path="row" type="integer">
+  Layout: variables sharing a row ID within a group render side by side.
+</ParamField>
+
+<ParamField path="flex" type="number" default="1">
+  Layout: the variable's share of its row's width. Positive; requires `row`.
+</ParamField>
+
+<ParamField path="deploy_time" type="boolean" default="false">
+  Ask for the value every time a deploy starts instead of storing it on the
+  target.
+</ParamField>
+
+<ParamField path="when" type="mapping">
+  `var` plus exactly one operator (`eq`, `ne`, `in`, `gt`, `gte`, `lt`,
+  `lte`, `set`). See [conditions](/reference/conditions).
+</ParamField>
+
+## A complete example
+
+```yaml keel.yaml
+version: 1
+
+deployments:
+  cloud-gcp:
+    description: Run the service on a single GCE VM.
+    long_description: |
+      Provisions a VM with Terraform, builds the image on Cloud Build,
+      and rolls it out. **Plan** mode previews changes without applying.
+
+    groups:
+      1: Google Cloud
+      2:
+        label: Sizing
+        description: The defaults fit most teams.
+        collapsed: true
+
+    environment:
+      dockerfile: deploy/Dockerfile
+      context: .
+
+    steps:
+      - name: Authenticate
+        run: |
+          printf '%s' "$GCP_SA_KEY_JSON" > /tmp/sa.json
+          gcloud auth activate-service-account --key-file=/tmp/sa.json
+          gcloud config set project "$GCP_PROJECT"
+      - name: Terraform
+        run: |
+          if [ "${RUN_MODE:-full}" = "plan" ]; then
+            terraform -chdir=deploy/terraform plan
+          else
+            terraform -chdir=deploy/terraform apply -auto-approve
+            export VM_IP="$(terraform -chdir=deploy/terraform output -raw instance_ip)"
+          fi
+
+    variables:
+      GCP_PROJECT:
+        label: Project ID
+        group: 1
+        row: 1
+        validation:
+          pattern: "[a-z][a-z0-9-]{4,28}[a-z0-9]"
+          message: Lowercase project ID, e.g. acme-prod-123456
+        manifest:
+          why: The project the VM is created in.
+          how: Google Cloud console → project picker → copy the ID.
+      GCP_REGION:
+        label: Region
+        group: 1
+        row: 1
+        type: select
+        default: us-central1
+        options:
+          - {value: us-central1, label: "us-central1 (Iowa)"}
+          - {value: europe-west1, label: "europe-west1 (Belgium)"}
+      GCP_SA_KEY_JSON:
+        label: Service account key (JSON)
+        group: 1
+        type: multiline
+        secret: true
+        manifest:
+          why: Authenticates Terraform and gcloud.
+          how: IAM & Admin → Service accounts → Keys → Add key → JSON.
+      MACHINE_TYPE:
+        label: Machine type
+        group: 2
+        type: select
+        default: e2-medium
+        options: [e2-small, e2-medium, e2-standard-2]
+      DATA_DISK_GB:
+        label: Data disk (GB)
+        group: 2
+        type: number
+        default: "20"
+        validation: {min: 10, max: 500}
+      RUN_MODE:
+        label: Mode
+        type: select
+        deploy_time: true
+        default: full
+        options:
+          - {value: full, label: "Full — provision and roll out"}
+          - {value: plan, label: "Plan — preview only"}
+
+    outputs:
+      VM_IP:
+        label: Server IP
+        description: Create an A record pointing here.
+```
+
+## Validation
+
+`keel validate` and both UIs check the whole document and report every
+problem at once with the path of the offending key:
+
+```text
+✗ keel.yaml is invalid:
+  - deployments.aws-production.environment.dockerfile: is required (the Dockerfile that defines the deployment environment)
+  - deployments.aws-production.variables.region: invalid variable name "region" (use uppercase letters, digits, and underscores, e.g. "AWS_REGION")
+```
+
+The rules are listed on the [validation page](/reference/validation#configuration-rules).
