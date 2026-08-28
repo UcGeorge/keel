@@ -1,48 +1,408 @@
-# keel.yaml — Keel deployment configuration
-# Reference: docs/keel-yaml.md in the Keel repository.
+# keel.yaml — Keel deploys Keel.
+#
+# This deployment stands up a complete Keel Cloud for one company and a few
+# of its clients on a single GCE VM: caddy (automatic HTTPS) + keel-cloud +
+# PostgreSQL via compose, images built remotely on Cloud Build, nightly
+# database backups to GCS. Architecture and runbook: docs/deploy-keel-cloud.md
 version: 1
 
 deployments:
-  # Each top-level key under `deployments:` is one deployment, the way a
-  # compose file has services. Rename "production" to whatever fits.
-  production:
-    description: |
-      Deploy this project to production.
-      Describe here what this deployment does — the description is shown in
-      the Keel UI and in generated variable manifests.
+  cloud-gcp:
+    description: Run Keel Cloud on a single GCE VM — Terraform-managed, ~$35/month.
 
-    # The environment is the container the deployment steps run in. Put every
-    # CLI and tool the steps need into this Dockerfile (cloud CLIs, terraform,
-    # kubectl, ...). A deployment can point at its own Dockerfile, or several
-    # deployments can share one.
+    long_description: |
+      Provisions and updates a production **Keel Cloud** on Google Cloud:
+
+      - **One `e2` VM** running `caddy` (automatic Let's Encrypt TLS),
+        `keel-cloud`, and `postgres:16` under Docker Compose. Deployment runs
+        need a real Docker daemon, which is why this is a VM and not Cloud
+        Run — and at "one company + a few clients" scale a single VM is also
+        the cheapest honest answer (~$35/month all-in on `e2-medium`).
+      - **Cloud Build** builds the `keel-cloud` image remotely and pushes it
+        to Artifact Registry; the VM pulls it and rolls over with a health
+        check. SSH goes through IAP — port 22 is never open to the internet.
+      - **A separate persistent data disk** holds the database, repository
+        checkouts, and TLS certificates, so the VM itself is disposable.
+      - **Nightly `pg_dump` backups** stream to a GCS bucket that Terraform
+        never owns — `destroy` keeps every backup (and takes one last one).
+
+      Press **Deploy** and pick the action: a normal deploy, a Terraform
+      *plan* preview, or *destroy* (typed confirmation required).
+
+      > **No domain needed:** leave *Domain* empty and this Keel Cloud goes
+      > live at `https://<server-ip>.sslip.io` — real TLS, zero DNS setup.
+      > With your own domain, the first run ends by printing the server's
+      > static IP; point an A record at it and TLS activates automatically.
+      > You can start on sslip.io and switch to a real domain any time by
+      > filling the variable and deploying again.
+
     environment:
       dockerfile: deploy/Dockerfile
       context: .
 
-    # Steps run in order inside the environment, with the repository mounted
-    # at /workspace and every variable exported as an environment variable.
-    # A step that fails (non-zero exit) stops the run.
-    steps:
-      - name: Show environment
-        run: |
-          echo "Deploying $KEEL_DEPLOYMENT to target $KEEL_TARGET"
-          echo "Greeting: $GREETING"
-      - name: Deploy
-        run: |
-          echo "Put your real deployment commands here."
+    groups:
+      1:
+        label: Google Cloud
+        description: The project this Keel Cloud lives in — a dedicated project is strongly recommended.
+      2:
+        label: Application
+      3:
+        label: Sizing & retention
+        description: The defaults fit one company and a few clients. Come back here only if you outgrow them.
+        collapsed: true
 
-    # Variables are the inputs a deployment target must provide — the same
-    # idea as terraform variables. Each one becomes an environment variable
-    # inside the run. The form shown in Keel Dev and Keel Cloud is rendered
-    # from these definitions.
     variables:
-      GREETING:
-        label: Greeting
-        type: text
-        required: true
-        default: hello
-        description: An example variable. Replace it with your real inputs.
+      GCP_PROJECT:
+        label: Project ID
+        group: 1
+        row: 1
+        flex: 2
+        placeholder: my-keel-cloud
+        validation:
+          pattern: "[a-z][a-z0-9-]{4,28}[a-z0-9]"
+          message: A GCP project ID, like my-keel-cloud.
         manifest:
-          include: true
-          why: Demonstrates how a variable appears in a generated manifest.
-          how: Any short text works. Delete this variable once you add real ones.
+          why: Every resource (VM, registry, backups) is created inside this project, so its bill is exactly what Keel costs.
+          how: |
+            Create a **dedicated project** in the [GCP console](https://console.cloud.google.com/projectcreate)
+            with billing enabled, and use its *project ID* (not the display name).
+
+      GCP_REGION:
+        label: Region
+        type: select
+        group: 1
+        row: 1
+        default: us-central1
+        options:
+          - {value: us-central1, label: "us-central1 (Iowa — cheapest)"}
+          - {value: us-east1, label: "us-east1 (South Carolina)"}
+          - {value: europe-west1, label: "europe-west1 (Belgium)"}
+          - {value: europe-west4, label: "europe-west4 (Netherlands)"}
+          - {value: asia-southeast1, label: "asia-southeast1 (Singapore)"}
+        description: Pick the region closest to the people using the UI.
+
+      GCP_ZONE_SUFFIX:
+        label: Zone
+        type: select
+        group: 1
+        row: 1
+        default: a
+        options: [a, b, c]
+        description: Zone within the region (the region name + this letter).
+
+      GCP_SA_KEY_JSON:
+        label: Service account key (JSON)
+        type: multiline
+        secret: true
+        group: 1
+        description: Key of the service account that provisions everything.
+        manifest:
+          title: Deployer service account key
+          why: Authenticates Terraform, Cloud Build, and SSH-over-IAP. It is stored encrypted and never leaves the deployment run.
+          how: |
+            In the dedicated project: **IAM & Admin → Service Accounts → Create**
+            (name it `keel-deployer`), grant it the **Owner** role *on that
+            project only*, then **Keys → Add key → JSON** and paste the file's
+            contents here. Owner-on-a-dedicated-project keeps this simple and
+            contains the blast radius; see docs/deploy-keel-cloud.md for a
+            least-privilege role list if your org requires one.
+
+      DOMAIN:
+        label: Domain (optional)
+        required: false
+        group: 2
+        row: 1
+        flex: 2
+        placeholder: keel.example.com — empty for a free sslip.io hostname
+        validation:
+          pattern: "[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+"
+          message: A DNS hostname, like keel.example.com.
+        description: |
+          Where this Keel Cloud will be reachable. **No domain? Leave this
+          empty** — you get `https://<server-ip>.sslip.io` automatically,
+          with real TLS and nothing to configure. Fill it in later whenever
+          you get a domain and deploy again.
+        manifest:
+          why: Becomes the public URL (and the TLS certificate) of your Keel Cloud.
+          how: |
+            Any hostname you control — after the **first** deploy, create an
+            **A record** pointing it at the `VM_IP` the run prints, and HTTPS
+            activates automatically once DNS resolves. **This value is
+            optional:** left empty, a free `…sslip.io` hostname derived from
+            the server's IP is used instead, which works immediately and
+            needs no DNS setup.
+
+      ACME_EMAIL:
+        label: Certificate email
+        type: email
+        group: 2
+        row: 1
+        description: Let's Encrypt sends certificate expiry notices here.
+        manifest:
+          why: Required by Let's Encrypt for the TLS certificate.
+          how: Any monitored mailbox, e.g. ops@your-company.com.
+
+      ENCRYPTION_KEY:
+        label: Encryption key
+        secret: true
+        group: 2
+        row: 2
+        validation:
+          pattern: "[0-9a-fA-F]{64}"
+          message: "64 hex characters — generate one with: openssl rand -hex 32"
+        description: AES-256 key encrypting every stored variable value and repo token.
+        manifest:
+          why: Client credentials stored in this Keel Cloud are encrypted at rest with this key. Losing it means re-entering every secret.
+          how: "Run `openssl rand -hex 32` and keep a copy in your password manager."
+
+      DB_PASSWORD:
+        label: Database password
+        secret: true
+        group: 2
+        row: 2
+        validation:
+          pattern: "[A-Za-z0-9_.~-]{16,128}"
+          message: "At least 16 URL-safe characters — openssl rand -hex 24 works."
+        description: Password for the PostgreSQL keel user (only ever used on the VM).
+        manifest:
+          why: Protects the PostgreSQL instance holding all Keel Cloud state.
+          how: "Run `openssl rand -hex 24`. It is stored in Secret Manager and never appears in instance metadata."
+
+      MACHINE_TYPE:
+        label: Machine type
+        type: select
+        group: 3
+        row: 1
+        default: e2-medium
+        options:
+          - {value: e2-small, label: "e2-small — 2 GB, ~$13/mo (very light use)"}
+          - {value: e2-medium, label: "e2-medium — 4 GB, ~$25/mo (recommended)"}
+          - {value: e2-standard-2, label: "e2-standard-2 — 8 GB, ~$49/mo"}
+        description: Resize any time — the change applies on the next deploy with a short restart.
+
+      BOOT_DISK_GB:
+        label: Boot disk (GB)
+        type: number
+        group: 3
+        row: 1
+        default: "40"
+        validation: {min: 20, max: 500}
+        description: OS and Docker images (client deployment environments build here).
+
+      DATA_DISK_GB:
+        label: Data disk (GB)
+        type: number
+        group: 3
+        row: 1
+        default: "20"
+        validation: {min: 10, max: 1000}
+        description: Database, repo checkouts, TLS certs. Survives VM replacement.
+
+      BACKUP_RETENTION_DAYS:
+        label: Backup retention (days)
+        type: number
+        group: 3
+        row: 1
+        default: "30"
+        validation: {min: 1, max: 365}
+        description: Nightly database dumps older than this are deleted.
+
+      # --- Asked in the modal every time Deploy is pressed -------------------
+
+      ACTION:
+        label: Action
+        type: select
+        deploy_time: true
+        row: 1
+        default: deploy
+        options:
+          - {value: deploy, label: Deploy}
+          - {value: destroy, label: "Destroy the infrastructure"}
+        description: What this run does.
+
+      RUN_MODE:
+        label: Mode
+        type: select
+        deploy_time: true
+        row: 2
+        default: full
+        when: {var: ACTION, eq: deploy}
+        options:
+          - {value: full, label: "Full — provision, build, roll out"}
+          - {value: plan, label: "Plan — preview Terraform changes only"}
+
+      CONFIRM_DESTROY:
+        label: Type "destroy" to confirm
+        deploy_time: true
+        row: 2
+        when: {var: ACTION, eq: destroy}
+        validation:
+          pattern: "destroy"
+          message: Type exactly "destroy" to confirm tearing everything down.
+        description: Deletes the VM, disks, and IP. Backups and Terraform state are kept, and a final backup is attempted first.
+
+    steps:
+      - name: Authenticate to Google Cloud
+        run: |
+          umask 077
+          printf '%s' "$GCP_SA_KEY_JSON" > /tmp/gcp-key.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp-key.json --quiet
+          gcloud config set project "$GCP_PROJECT" --quiet
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp-key.json
+          export GCP_ZONE="$GCP_REGION-$GCP_ZONE_SUFFIX"
+          export STATE_BUCKET="$GCP_PROJECT-keel-tfstate"
+          export BACKUP_BUCKET="$GCP_PROJECT-keel-backups"
+
+          echo "Enabling required APIs (no-op when already on)…"
+          gcloud services enable compute.googleapis.com artifactregistry.googleapis.com \
+            cloudbuild.googleapis.com secretmanager.googleapis.com iap.googleapis.com --quiet
+
+          # State and backup buckets live OUTSIDE terraform on purpose:
+          # `destroy` must never delete state history or backups.
+          gcloud storage buckets create "gs://$STATE_BUCKET" \
+            --location="$GCP_REGION" --uniform-bucket-level-access --quiet 2>/dev/null || true
+          gcloud storage buckets update "gs://$STATE_BUCKET" --versioning --quiet >/dev/null
+          gcloud storage buckets create "gs://$BACKUP_BUCKET" \
+            --location="$GCP_REGION" --uniform-bucket-level-access --quiet 2>/dev/null || true
+          printf '{"rule":[{"action":{"type":"Delete"},"condition":{"age":%s}}]}' \
+            "$BACKUP_RETENTION_DAYS" > /tmp/lifecycle.json
+          gcloud storage buckets update "gs://$BACKUP_BUCKET" \
+            --lifecycle-file=/tmp/lifecycle.json --quiet >/dev/null
+          echo "Authenticated to $GCP_PROJECT (zone $GCP_ZONE)."
+
+      - name: Provision infrastructure (Terraform)
+        run: |
+          export TF_DATA_DIR="/tmp/terraform-$KEEL_TARGET"
+          export TF_IN_AUTOMATION=1
+          export TF_VAR_project="$GCP_PROJECT"
+          export TF_VAR_region="$GCP_REGION"
+          export TF_VAR_zone="$GCP_ZONE"
+          export TF_VAR_domain="${DOMAIN:-}"
+          export TF_VAR_acme_email="$ACME_EMAIL"
+          export TF_VAR_machine_type="$MACHINE_TYPE"
+          export TF_VAR_boot_disk_gb="$BOOT_DISK_GB"
+          export TF_VAR_data_disk_gb="$DATA_DISK_GB"
+          export TF_VAR_db_password="$DB_PASSWORD"
+          export TF_VAR_encryption_key="$ENCRYPTION_KEY"
+          export TF_VAR_backup_bucket="$BACKUP_BUCKET"
+
+          terraform -chdir=deploy/terraform init -input=false -reconfigure \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="prefix=keel-cloud/$KEEL_TARGET"
+
+          case "${ACTION:-deploy}" in
+            destroy)
+              if [ "${CONFIRM_DESTROY:-}" != "destroy" ]; then
+                echo "Destroy requested without confirmation — aborting." >&2
+                exit 1
+              fi
+              echo "Attempting a final database backup…"
+              gcloud compute ssh keel-cloud --zone "$GCP_ZONE" --tunnel-through-iap \
+                --quiet --command "sudo /opt/keel/backup.sh" \
+                || echo "Final backup failed or VM unreachable — continuing."
+              terraform -chdir=deploy/terraform destroy -input=false -auto-approve
+              echo "Destroyed. Backups (gs://$BACKUP_BUCKET) and state (gs://$STATE_BUCKET) are kept."
+              ;;
+            *)
+              if [ "${RUN_MODE:-full}" = "plan" ]; then
+                terraform -chdir=deploy/terraform plan -input=false
+              else
+                terraform -chdir=deploy/terraform apply -input=false -auto-approve
+              fi
+              ;;
+          esac
+
+      - name: Build the keel-cloud image (Cloud Build)
+        run: |
+          if [ "${ACTION:-deploy}" != "deploy" ] || [ "${RUN_MODE:-full}" != "full" ]; then
+            echo "Skipping image build (action=${ACTION:-deploy}, mode=${RUN_MODE:-full})."
+            exit 0
+          fi
+          sha="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+          run8="$(printf '%.8s' "$KEEL_RUN_ID")"
+          export IMAGE="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/keel/keel-cloud:$sha-$run8"
+          echo "Building $IMAGE remotely…"
+          gcloud builds submit --config deploy/cloudbuild.yaml \
+            --substitutions "_IMAGE=$IMAGE,_VERSION=$sha" --quiet .
+
+      - name: Roll out on the server
+        run: |
+          if [ "${ACTION:-deploy}" != "deploy" ] || [ "${RUN_MODE:-full}" != "full" ]; then
+            echo "Skipping rollout (action=${ACTION:-deploy}, mode=${RUN_MODE:-full})."
+            exit 0
+          fi
+          echo "Waiting for the server to accept SSH (first boot takes ~2 minutes)…"
+          i=0
+          until gcloud compute ssh keel-cloud --zone "$GCP_ZONE" --tunnel-through-iap \
+                --quiet --command "true" 2>/dev/null; do
+            i=$((i+1))
+            if [ "$i" -ge 30 ]; then
+              echo "Server did not become reachable over SSH." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          gcloud compute ssh keel-cloud --zone "$GCP_ZONE" --tunnel-through-iap \
+            --quiet --command "sudo /opt/keel/rollout.sh '$IMAGE'"
+
+      - name: Verify & collect outputs
+        run: |
+          if [ "${ACTION:-deploy}" != "deploy" ]; then
+            echo "Destroy run — nothing to verify."
+            exit 0
+          fi
+          if [ "${RUN_MODE:-full}" = "plan" ]; then
+            echo "Plan only — no live checks, no outputs."
+            exit 0
+          fi
+          export VM_IP="$(terraform -chdir=deploy/terraform output -raw instance_ip)"
+          host="$(terraform -chdir=deploy/terraform output -raw domain)"
+          export APP_URL="https://$host"
+          gcloud compute ssh keel-cloud --zone "$GCP_ZONE" --tunnel-through-iap \
+            --quiet --command "curl -fsS http://127.0.0.1:8080/healthz" >/dev/null
+          echo "keel-cloud is healthy on the server."
+          # An sslip.io hostname resolves immediately, so wait out the TLS
+          # issuance; a custom domain may need its A record first — one
+          # quick attempt, then explain what to do.
+          live=no
+          tries=1
+          [ -z "${DOMAIN:-}" ] && tries=12
+          i=0
+          while [ "$i" -lt "$tries" ]; do
+            if curl -fsS --max-time 10 "$APP_URL/healthz" >/dev/null 2>&1; then
+              live=yes
+              break
+            fi
+            i=$((i+1))
+            [ "$i" -lt "$tries" ] && sleep 10
+          done
+          if [ "$live" = "yes" ]; then
+            export SITE_STATUS="live at $APP_URL"
+          elif [ -n "${DOMAIN:-}" ]; then
+            export SITE_STATUS="waiting for DNS/TLS — point an A record for $DOMAIN at $VM_IP"
+          else
+            export SITE_STATUS="TLS certificate for $host is still being issued — usually live within a few minutes"
+          fi
+          export DATABASE_URL="postgres://keel:$DB_PASSWORD@localhost:5432/keel"
+          echo "Done: $SITE_STATUS"
+
+    outputs:
+      APP_URL:
+        label: Keel Cloud URL
+        description: Where your team signs in — a sslip.io address works immediately; a custom domain once its DNS points at the server.
+      VM_IP:
+        label: Server IP
+        description: Static — with a custom domain, create its **A record** pointing here. Nothing to do for sslip.io.
+      SITE_STATUS:
+        label: Site status
+        description: Whether the public URL already answers, or what to do next.
+      IMAGE:
+        label: Deployed image
+        description: Exact Artifact Registry image this run rolled out.
+      BACKUP_BUCKET:
+        label: Backup bucket
+        description: Nightly database dumps land here (kept even after destroy).
+      DATABASE_URL:
+        secret: true
+        label: Database URL
+        description: For emergency psql access **on the VM** (via `gcloud compute ssh`).

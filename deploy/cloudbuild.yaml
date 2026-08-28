@@ -1,0 +1,19 @@
+# Remote build of the keel-cloud image (used by keel.yaml's "Build" step).
+# Runs on Cloud Build because Keel deployment steps execute inside a
+# container without a Docker daemon of their own.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_IMAGE}
+      - --build-arg
+      - VERSION=${_VERSION}
+      - .
+images:
+  - ${_IMAGE}
+substitutions:
+  _IMAGE: ""
+  _VERSION: dev
+options:
+  logging: CLOUD_LOGGING_ONLY

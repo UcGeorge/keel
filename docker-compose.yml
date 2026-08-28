@@ -33,16 +33,21 @@ services:
       KEEL_DATABASE_URL: postgres://keel:keel@db:5432/keel?sslmode=disable
       KEEL_BASE_URL: ${KEEL_BASE_URL:-http://localhost:8080}
       KEEL_ENCRYPTION_KEY: ${KEEL_ENCRYPTION_KEY:-}
+      # KEEL_DATA_DIR must be a host directory bind-mounted at the SAME
+      # path inside the container: deployment runs go through the host's
+      # Docker daemon (the mounted socket), and the engine bind-mounts run
+      # workspaces by path — a path that only exists inside this container
+      # (or a named volume) would mount empty on the host.
+      KEEL_DATA_DIR: ${PWD}/keel-data
       KEEL_GITHUB_APP_ID: ${KEEL_GITHUB_APP_ID:-}
       KEEL_GITHUB_APP_SLUG: ${KEEL_GITHUB_APP_SLUG:-}
       KEEL_GITHUB_PRIVATE_KEY: ${KEEL_GITHUB_PRIVATE_KEY:-}
       KEEL_GITHUB_WEBHOOK_SECRET: ${KEEL_GITHUB_WEBHOOK_SECRET:-}
     volumes:
-      - keel-data:/data
+      - ${PWD}/keel-data:${PWD}/keel-data
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "8080:8080"
 
 volumes:
   keel-db:
-  keel-data:

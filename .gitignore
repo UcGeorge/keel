@@ -2,7 +2,15 @@
 /bin/
 /dist/
 
-# Local Keel state (created by `keel dev`)
+# Local Keel state (created by `keel dev`) and compose data dir
+.keel/
+keel-data/
+
+# Terraform (state lives in GCS; runs use TF_DATA_DIR=/tmp)
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
 
 # Node (used only to compile Tailwind CSS)
 node_modules/
@@ -17,3 +25,4 @@ node_modules/
 
 # Other
 status*.txt
+keys/

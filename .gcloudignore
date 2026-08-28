@@ -1,0 +1,14 @@
+# What `gcloud builds submit` must NOT upload. The build needs the Go
+# source, go.mod/go.sum, and the committed embedded assets — nothing else.
+.git
+.gitignore
+.keel/
+bin/
+dist/
+node_modules/
+keel-data/
+status*.txt
+.env
+.env.*
+deploy/terraform/.terraform*
+*.tfstate*

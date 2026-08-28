@@ -1,0 +1,226 @@
+#cloud-config
+# Rendered by terraform (templatefile) into the VM's user-data.
+# ${"$"}{...} sequences below are literal shell/compose interpolation;
+# unescaped ones are filled in by terraform.
+
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - jq
+
+write_files:
+  # The application stack. Paths under /mnt/keel-data are on the persistent
+  # data disk and survive VM replacement.
+  #
+  # KEEL_DATA_DIR is bind-mounted at the SAME path inside the container as
+  # on the host: deployment runs are started through the host's Docker
+  # socket, and the engine bind-mounts run workspaces by path — the path
+  # must resolve on the host.
+  - path: /opt/keel/compose.yaml
+    permissions: "0644"
+    content: |
+      services:
+        db:
+          image: postgres:16-alpine
+          container_name: keel-db
+          restart: unless-stopped
+          environment:
+            POSTGRES_USER: keel
+            POSTGRES_DB: keel
+          env_file:
+            - /opt/keel/secrets.env
+          volumes:
+            - /mnt/keel-data/pgdata:/var/lib/postgresql/data
+          healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U keel"]
+            interval: 3s
+            timeout: 3s
+            retries: 20
+          logging: &log
+            driver: json-file
+            options:
+              max-size: 10m
+              max-file: "3"
+
+        keel-cloud:
+          image: $${KEEL_IMAGE}
+          container_name: keel-cloud
+          restart: unless-stopped
+          depends_on:
+            db:
+              condition: service_healthy
+          environment:
+            KEEL_ADDR: ":8080"
+            KEEL_BASE_URL: "https://${domain}"
+            KEEL_DATA_DIR: /mnt/keel-data/keel-data
+          env_file:
+            - /opt/keel/secrets.env
+          volumes:
+            - /mnt/keel-data/keel-data:/mnt/keel-data/keel-data
+            - /var/run/docker.sock:/var/run/docker.sock
+          ports:
+            - "127.0.0.1:8080:8080"
+          logging: *log
+
+        caddy:
+          image: caddy:2-alpine
+          container_name: keel-caddy
+          restart: unless-stopped
+          ports:
+            - "80:80"
+            - "443:443"
+            - "443:443/udp"
+          volumes:
+            - /opt/keel/Caddyfile:/etc/caddy/Caddyfile:ro
+            - /mnt/keel-data/caddy:/data
+          logging: *log
+
+  - path: /opt/keel/Caddyfile
+    permissions: "0644"
+    content: |
+      {
+        email ${acme_email}
+      }
+      ${domain} {
+        reverse_proxy keel-cloud:8080
+      }
+
+  # First-boot setup: format/mount the data disk (only if blank), fetch
+  # secrets from Secret Manager (they are never in instance metadata), and
+  # seed a placeholder image tag so compose can parse before the first
+  # rollout.
+  - path: /opt/keel/bootstrap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+      dev=/dev/disk/by-id/google-keel-data
+      if ! blkid "$${dev}" >/dev/null 2>&1; then
+        mkfs.ext4 -m 0 -F "$${dev}"
+      fi
+      mkdir -p /mnt/keel-data
+      grep -q '/mnt/keel-data' /etc/fstab || \
+        echo "$${dev} /mnt/keel-data ext4 defaults,nofail 0 2" >> /etc/fstab
+      mountpoint -q /mnt/keel-data || mount /mnt/keel-data
+      mkdir -p /mnt/keel-data/pgdata /mnt/keel-data/keel-data /mnt/keel-data/caddy
+
+      tok=$(curl -sf -H "Metadata-Flavor: Google" \
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+        | jq -r .access_token)
+      fetch() {
+        curl -sf -H "Authorization: Bearer $${tok}" \
+          "https://secretmanager.googleapis.com/v1/projects/${project}/secrets/$${1}/versions/latest:access" \
+          | jq -r .payload.data | base64 -d
+      }
+      dbpw=$(fetch keel-db-password)
+      enc=$(fetch keel-encryption-key)
+      umask 077
+      cat > /opt/keel/secrets.env <<EOF
+      POSTGRES_PASSWORD=$${dbpw}
+      KEEL_DATABASE_URL=postgres://keel:$${dbpw}@db:5432/keel?sslmode=disable
+      KEEL_ENCRYPTION_KEY=$${enc}
+      EOF
+
+      [ -f /opt/keel/image.env ] || \
+        echo "KEEL_IMAGE=keel-cloud-not-deployed-yet" > /opt/keel/image.env
+
+  # Called over SSH by the keel.yaml "Roll out" step with the freshly built
+  # image reference. Logs in to Artifact Registry with the VM's own
+  # identity, switches the tag, and waits for /healthz.
+  - path: /opt/keel/rollout.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+      img="$${1:?usage: rollout.sh <image-ref>}"
+      tok=$(curl -sf -H "Metadata-Flavor: Google" \
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+        | jq -r .access_token)
+      printf '%s' "$${tok}" | docker login -u oauth2accesstoken \
+        --password-stdin https://${region}-docker.pkg.dev >/dev/null
+      printf 'KEEL_IMAGE=%s\n' "$${img}" > /opt/keel/image.env
+      docker compose --project-directory /opt/keel \
+        --env-file /opt/keel/image.env -f /opt/keel/compose.yaml up -d
+      i=0
+      until curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; do
+        i=$((i+1))
+        if [ "$${i}" -ge 60 ]; then
+          echo "keel-cloud did not become healthy; recent logs:" >&2
+          docker logs --tail 50 keel-cloud >&2 || true
+          exit 1
+        fi
+        sleep 2
+      done
+      echo "rolled out $${img}"
+
+  # Nightly dump, streamed to the backup bucket with the VM's token — no
+  # gcloud needed on the VM. Bucket lifecycle handles retention.
+  - path: /opt/keel/backup.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      set -eu
+      ts=$(date -u +%Y%m%d-%H%M%S)
+      tmp=$(mktemp)
+      trap 'rm -f "$${tmp}"' EXIT
+      docker exec keel-db pg_dump -U keel keel | gzip > "$${tmp}"
+      tok=$(curl -sf -H "Metadata-Flavor: Google" \
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
+        | jq -r .access_token)
+      curl -sf -X POST \
+        -H "Authorization: Bearer $${tok}" \
+        -H "Content-Type: application/gzip" \
+        --data-binary @"$${tmp}" \
+        "https://storage.googleapis.com/upload/storage/v1/b/${backup_bucket}/o?uploadType=media&name=pg/keel-$${ts}.sql.gz" \
+        >/dev/null
+      echo "backup uploaded: pg/keel-$${ts}.sql.gz"
+
+  - path: /etc/systemd/system/keel-backup.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Keel nightly database backup
+      [Service]
+      Type=oneshot
+      ExecStart=/opt/keel/backup.sh
+
+  - path: /etc/systemd/system/keel-backup.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Keel nightly database backup
+      [Timer]
+      OnCalendar=*-*-* 03:17:00 UTC
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+
+  # Deployment runs build client environment images on this daemon; prune
+  # weekly so the boot disk doesn't fill (recent images stay cached).
+  - path: /etc/systemd/system/keel-prune.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Prune unused Docker data
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/docker system prune -af --filter until=168h
+
+  - path: /etc/systemd/system/keel-prune.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Prune unused Docker data weekly
+      [Timer]
+      OnCalendar=Sun *-*-* 04:00:00 UTC
+      Persistent=true
+      [Install]
+      WantedBy=timers.target
+
+runcmd:
+  - /opt/keel/bootstrap.sh
+  - systemctl enable --now docker
+  - docker compose --project-directory /opt/keel --env-file /opt/keel/image.env -f /opt/keel/compose.yaml up -d db caddy
+  - systemctl daemon-reload
+  - systemctl enable --now keel-backup.timer keel-prune.timer

@@ -1,0 +1,14 @@
+# Applies to both the keel-cloud image build (root Dockerfile) and the
+# deployment environment build (deploy/Dockerfile, context "."). Neither
+# needs these, and they bloat the build context.
+.git
+.keel
+bin
+dist
+node_modules
+keel-data
+status*.txt
+.env
+.env.*
+deploy/terraform/.terraform*
+*.tfstate*

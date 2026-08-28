@@ -6,6 +6,12 @@ repositories, and push-triggered deployments.
 
 ## Running it
 
+> **Deploying to production?** Keel deploys itself: the repository's own
+> `keel.yaml` provisions a complete single-VM Keel Cloud on Google Cloud —
+> see [deploy-keel-cloud.md](deploy-keel-cloud.md) for the architecture,
+> costs, and runbook. The rest of this section covers running the binary
+> by hand.
+
 Requirements on the host: **PostgreSQL 13+**, **Docker** (runs execute on
 the host daemon), **git**.
 

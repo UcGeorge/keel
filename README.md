@@ -80,6 +80,14 @@ organization), connect a repository by git URL (plus a read token if it's
 private), and deploy. See [docs/keel-cloud.md](docs/keel-cloud.md) for
 production setup, the GitHub App integration, and the permission model.
 
+For a real installation, **Keel deploys itself**: this repository's own
+[`keel.yaml`](keel.yaml) provisions a production Keel Cloud on a single
+GCE VM (caddy TLS + keel-cloud + PostgreSQL, Cloud Build images, nightly
+GCS backups, IAP-only SSH) for ~$35/month — sized for one company and a
+few of its clients. Run `keel dev` here, fill in the `cloud-gcp` target,
+press Deploy. Architecture and runbook:
+[docs/deploy-keel-cloud.md](docs/deploy-keel-cloud.md).
+
 ## The configuration
 
 ```yaml
