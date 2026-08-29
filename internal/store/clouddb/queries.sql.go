@@ -179,6 +179,47 @@ func (q *Queries) CreateOrgMember(ctx context.Context, arg CreateOrgMemberParams
 	return &i, err
 }
 
+const createRecipient = `-- name: CreateRecipient :one
+
+INSERT INTO notification_recipients (org_id, email, events, enabled, include_insight, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, org_id, email, events, enabled, created_by, created_at, updated_at, include_insight
+`
+
+type CreateRecipientParams struct {
+	OrgID          uuid.UUID
+	Email          string
+	Events         []string
+	Enabled        bool
+	IncludeInsight bool
+	CreatedBy      uuid.NullUUID
+}
+
+// Notification recipients ----------------------------------------------------
+func (q *Queries) CreateRecipient(ctx context.Context, arg CreateRecipientParams) (*NotificationRecipient, error) {
+	row := q.db.QueryRow(ctx, createRecipient,
+		arg.OrgID,
+		arg.Email,
+		arg.Events,
+		arg.Enabled,
+		arg.IncludeInsight,
+		arg.CreatedBy,
+	)
+	var i NotificationRecipient
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Email,
+		&i.Events,
+		&i.Enabled,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IncludeInsight,
+	)
+	return &i, err
+}
+
 const createRepo = `-- name: CreateRepo :one
 
 INSERT INTO repos (org_id, name, provider, git_url, branch, auth_token_enc, github_installation_id, github_full_name, created_by)
@@ -450,6 +491,29 @@ func (q *Queries) DeleteOrgMember(ctx context.Context, arg DeleteOrgMemberParams
 	return err
 }
 
+const deleteOrgSMTP = `-- name: DeleteOrgSMTP :exec
+DELETE FROM org_smtp_settings WHERE org_id = $1
+`
+
+func (q *Queries) DeleteOrgSMTP(ctx context.Context, orgID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrgSMTP, orgID)
+	return err
+}
+
+const deleteRecipient = `-- name: DeleteRecipient :exec
+DELETE FROM notification_recipients WHERE id = $1 AND org_id = $2
+`
+
+type DeleteRecipientParams struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
+func (q *Queries) DeleteRecipient(ctx context.Context, arg DeleteRecipientParams) error {
+	_, err := q.db.Exec(ctx, deleteRecipient, arg.ID, arg.OrgID)
+	return err
+}
+
 const deleteRepo = `-- name: DeleteRepo :exec
 DELETE FROM repos WHERE id = $1
 `
@@ -624,6 +688,58 @@ func (q *Queries) GetOrgMember(ctx context.Context, arg GetOrgMemberParams) (*Or
 		&i.CanConfigure,
 		&i.CanDeploy,
 		&i.CreatedAt,
+	)
+	return &i, err
+}
+
+const getOrgSMTP = `-- name: GetOrgSMTP :one
+
+SELECT org_id, host, port, username, password_enc, encryption, from_address, from_name, last_test_at, last_test_error, updated_by, updated_at FROM org_smtp_settings WHERE org_id = $1
+`
+
+// SMTP settings --------------------------------------------------------------
+func (q *Queries) GetOrgSMTP(ctx context.Context, orgID uuid.UUID) (*OrgSmtpSetting, error) {
+	row := q.db.QueryRow(ctx, getOrgSMTP, orgID)
+	var i OrgSmtpSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.Host,
+		&i.Port,
+		&i.Username,
+		&i.PasswordEnc,
+		&i.Encryption,
+		&i.FromAddress,
+		&i.FromName,
+		&i.LastTestAt,
+		&i.LastTestError,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+	)
+	return &i, err
+}
+
+const getRecipient = `-- name: GetRecipient :one
+SELECT id, org_id, email, events, enabled, created_by, created_at, updated_at, include_insight FROM notification_recipients WHERE id = $1 AND org_id = $2
+`
+
+type GetRecipientParams struct {
+	ID    uuid.UUID
+	OrgID uuid.UUID
+}
+
+func (q *Queries) GetRecipient(ctx context.Context, arg GetRecipientParams) (*NotificationRecipient, error) {
+	row := q.db.QueryRow(ctx, getRecipient, arg.ID, arg.OrgID)
+	var i NotificationRecipient
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Email,
+		&i.Events,
+		&i.Enabled,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.IncludeInsight,
 	)
 	return &i, err
 }
@@ -872,6 +988,34 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (*User, erro
 	return &i, err
 }
 
+const insertDelivery = `-- name: InsertDelivery :exec
+
+INSERT INTO notification_deliveries (org_id, event, subject, recipients, status, error)
+VALUES ($1, $2, $3, $4, $5, $6)
+`
+
+type InsertDeliveryParams struct {
+	OrgID      uuid.UUID
+	Event      string
+	Subject    string
+	Recipients []string
+	Status     string
+	Error      string
+}
+
+// Notification deliveries ----------------------------------------------------
+func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) error {
+	_, err := q.db.Exec(ctx, insertDelivery,
+		arg.OrgID,
+		arg.Event,
+		arg.Subject,
+		arg.Recipients,
+		arg.Status,
+		arg.Error,
+	)
+	return err
+}
+
 const insertRunInput = `-- name: InsertRunInput :exec
 
 INSERT INTO run_inputs (run_id, idx, name, label, value_enc, is_secret, deploy_time, source)
@@ -995,6 +1139,44 @@ func (q *Queries) ListAutoDeployTargets(ctx context.Context, repoID uuid.UUID) (
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDeliveries = `-- name: ListDeliveries :many
+SELECT id, org_id, event, subject, recipients, status, error, created_at FROM notification_deliveries WHERE org_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2
+`
+
+type ListDeliveriesParams struct {
+	OrgID uuid.UUID
+	Limit int32
+}
+
+func (q *Queries) ListDeliveries(ctx context.Context, arg ListDeliveriesParams) ([]*NotificationDelivery, error) {
+	rows, err := q.db.Query(ctx, listDeliveries, arg.OrgID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*NotificationDelivery
+	for rows.Next() {
+		var i NotificationDelivery
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Event,
+			&i.Subject,
+			&i.Recipients,
+			&i.Status,
+			&i.Error,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1156,6 +1338,81 @@ func (q *Queries) ListOrgsForUser(ctx context.Context, userID uuid.UUID) ([]*Lis
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecipients = `-- name: ListRecipients :many
+SELECT id, org_id, email, events, enabled, created_by, created_at, updated_at, include_insight FROM notification_recipients WHERE org_id = $1 ORDER BY lower(email)
+`
+
+func (q *Queries) ListRecipients(ctx context.Context, orgID uuid.UUID) ([]*NotificationRecipient, error) {
+	rows, err := q.db.Query(ctx, listRecipients, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*NotificationRecipient
+	for rows.Next() {
+		var i NotificationRecipient
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Email,
+			&i.Events,
+			&i.Enabled,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IncludeInsight,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecipientsForEvent = `-- name: ListRecipientsForEvent :many
+SELECT id, org_id, email, events, enabled, created_by, created_at, updated_at, include_insight FROM notification_recipients
+WHERE org_id = $1 AND enabled = true AND $2::text = ANY(events)
+ORDER BY lower(email)
+`
+
+type ListRecipientsForEventParams struct {
+	OrgID   uuid.UUID
+	Column2 string
+}
+
+func (q *Queries) ListRecipientsForEvent(ctx context.Context, arg ListRecipientsForEventParams) ([]*NotificationRecipient, error) {
+	rows, err := q.db.Query(ctx, listRecipientsForEvent, arg.OrgID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*NotificationRecipient
+	for rows.Next() {
+		var i NotificationRecipient
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.Email,
+			&i.Events,
+			&i.Enabled,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IncludeInsight,
 		); err != nil {
 			return nil, err
 		}
@@ -1722,6 +1979,37 @@ func (q *Queries) MarkInterruptedRuns(ctx context.Context) error {
 	return err
 }
 
+const pruneDeliveries = `-- name: PruneDeliveries :exec
+DELETE FROM notification_deliveries d
+WHERE d.org_id = $1 AND d.id NOT IN (
+    SELECT k.id FROM notification_deliveries k WHERE k.org_id = $1 ORDER BY k.created_at DESC, k.id DESC LIMIT $2
+)
+`
+
+type PruneDeliveriesParams struct {
+	OrgID uuid.UUID
+	Limit int32
+}
+
+func (q *Queries) PruneDeliveries(ctx context.Context, arg PruneDeliveriesParams) error {
+	_, err := q.db.Exec(ctx, pruneDeliveries, arg.OrgID, arg.Limit)
+	return err
+}
+
+const setOrgSMTPTest = `-- name: SetOrgSMTPTest :exec
+UPDATE org_smtp_settings SET last_test_at = now(), last_test_error = $2 WHERE org_id = $1
+`
+
+type SetOrgSMTPTestParams struct {
+	OrgID         uuid.UUID
+	LastTestError string
+}
+
+func (q *Queries) SetOrgSMTPTest(ctx context.Context, arg SetOrgSMTPTestParams) error {
+	_, err := q.db.Exec(ctx, setOrgSMTPTest, arg.OrgID, arg.LastTestError)
+	return err
+}
+
 const setRunCommit = `-- name: SetRunCommit :exec
 UPDATE runs SET commit_sha = $2 WHERE id = $1
 `
@@ -1845,6 +2133,32 @@ func (q *Queries) UpdateOrgName(ctx context.Context, arg UpdateOrgNameParams) (*
 		&i.CreatedAt,
 	)
 	return &i, err
+}
+
+const updateRecipient = `-- name: UpdateRecipient :exec
+UPDATE notification_recipients SET email = $3, events = $4, enabled = $5, include_insight = $6, updated_at = now()
+WHERE id = $1 AND org_id = $2
+`
+
+type UpdateRecipientParams struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	Email          string
+	Events         []string
+	Enabled        bool
+	IncludeInsight bool
+}
+
+func (q *Queries) UpdateRecipient(ctx context.Context, arg UpdateRecipientParams) error {
+	_, err := q.db.Exec(ctx, updateRecipient,
+		arg.ID,
+		arg.OrgID,
+		arg.Email,
+		arg.Events,
+		arg.Enabled,
+		arg.IncludeInsight,
+	)
+	return err
 }
 
 const updateRepoSettings = `-- name: UpdateRepoSettings :one
@@ -2034,6 +2348,43 @@ func (q *Queries) UpsertOrgAI(ctx context.Context, arg UpsertOrgAIParams) error 
 		arg.BaseUrl,
 		arg.ApiKeyEnc,
 		arg.Model,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const upsertOrgSMTP = `-- name: UpsertOrgSMTP :exec
+INSERT INTO org_smtp_settings (org_id, host, port, username, password_enc, encryption, from_address, from_name, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (org_id) DO UPDATE SET
+    host = excluded.host, port = excluded.port, username = excluded.username,
+    password_enc = excluded.password_enc, encryption = excluded.encryption,
+    from_address = excluded.from_address, from_name = excluded.from_name,
+    updated_by = excluded.updated_by, updated_at = now()
+`
+
+type UpsertOrgSMTPParams struct {
+	OrgID       uuid.UUID
+	Host        string
+	Port        int32
+	Username    string
+	PasswordEnc []byte
+	Encryption  string
+	FromAddress string
+	FromName    string
+	UpdatedBy   uuid.NullUUID
+}
+
+func (q *Queries) UpsertOrgSMTP(ctx context.Context, arg UpsertOrgSMTPParams) error {
+	_, err := q.db.Exec(ctx, upsertOrgSMTP,
+		arg.OrgID,
+		arg.Host,
+		arg.Port,
+		arg.Username,
+		arg.PasswordEnc,
+		arg.Encryption,
+		arg.FromAddress,
+		arg.FromName,
 		arg.UpdatedBy,
 	)
 	return err

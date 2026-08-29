@@ -1,0 +1,96 @@
+---
+title: "Email notifications"
+sidebarTitle: "Notifications"
+description: "Email people when deployments start, succeed, or fail, and about changes to repositories, targets, and members — with your own SMTP server and per-recipient event subscriptions."
+icon: "envelope"
+---
+
+Runs take a while. Notifications let people leave a run and hear about the
+outcome by email — with the last log lines and a link straight to the run —
+and keep an organization informed about changes that matter. Everything is
+configured per organization on the **Notifications** page, which owners
+and admins see in the navigation.
+
+## Mail server
+
+Keel sends through an SMTP server you provide. Fill in the form once:
+
+| Field | Notes |
+|---|---|
+| Server host, port | `smtp.example.com`, `587` for STARTTLS, `465` for TLS |
+| Encryption | **STARTTLS** (the usual choice), **TLS** (implicit, port 465), or **None** for a local relay |
+| Username, password | Optional. PLAIN, LOGIN, and CRAM-MD5 are supported; the password is stored encrypted and never shown again |
+| From address, from name | What recipients see, for example `keel@company.com` / `Keel Cloud` |
+
+Save, then press **Send a test email to …** — it goes to your own address
+and the result is recorded next to the form, with the server's error
+message when it fails.
+
+<Note>
+  Google Workspace, Microsoft 365, Amazon SES, Postmark, Mailgun, and any
+  other provider with SMTP access work. Providers that require OAuth-only
+  SMTP do not.
+</Note>
+
+## Recipients and events
+
+A recipient is any email address — a teammate (the form suggests members),
+a client's operations mailbox, an alerting inbox. Each recipient is
+subscribed to exactly the events ticked for them, grouped by category:
+
+| Category | Events |
+|---|---|
+| Deployments | started · succeeded · failed · canceled |
+| Repositories | connected · synced · disconnected |
+| Targets | created · variables changed · deleted |
+| Members | invited · joined · removed |
+
+*Repository synced* fires for a manual sync, a settings save, and for a
+push that changed the Keel configuration; pushes that leave `keel.yaml`
+untouched are silent. Recipients can be paused without losing their
+subscriptions, and the **all** toggle on a category selects everything in
+it.
+
+### AI insight in failure emails
+
+Each recipient can also tick **Include the AI insight in *Deployment
+failed* emails**. When a run fails, Keel then generates the explanation
+automatically — using the model configured under
+[AI insights](/cloud/ai-insights) — stores it with the run, and embeds it
+in that recipient's email: what happened, the likely cause, what to do
+next, and the technical detail. Recipients without the option get their
+email immediately; the ones with it get theirs once the model has
+answered, usually within a minute. If AI insights are not set up, or the
+model cannot be reached, the email says so in place of the insight.
+
+## What an email contains
+
+Every email has a headline (`prod → client-acme failed (api)`), a short
+plain-language summary, a details table — repository, deployment, target,
+who or what triggered it, when, duration, the failed step, the error
+recorded by Keel — and a button that opens the relevant page.
+
+Run emails also list the **deploy-time inputs** the run was started with
+(`ACTION=destroy`, `IMAGE_TAG=2024.11.3`), and failure emails carry the
+**last 30 log lines** with secret values already masked — and, for
+recipients who asked for it, the AI insight. Emails are sent as both plain
+text and HTML; the HTML version uses the same palette as the Keel UI and
+renders in Gmail, Outlook, and Apple Mail without images or web fonts.
+
+## Delivery log
+
+The bottom of the page lists the last emails Keel tried to send for the
+organization — event, subject, recipients, and whether the server accepted
+the message, with the error when it did not. The log keeps the most recent
+200 entries.
+
+## Behavior
+
+- Emails are sent in the background; a slow mail server never delays a
+  deploy or a page.
+- One email per event, addressed to every subscribed recipient at once.
+- Nothing is sent while no mail server is configured; recipients can still
+  be set up in advance.
+- Keel does not send invite links by email — the *Member invited* event
+  tells subscribers an invite exists, the link itself is shared by the
+  person who created it.

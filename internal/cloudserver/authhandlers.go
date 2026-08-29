@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/UcGeorge/keel/internal/auth"
+	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
 )
@@ -254,6 +255,7 @@ func (s *Server) handleInviteAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Q.AcceptInvite(r.Context(), invite.ID)
+	s.publishMemberEvent(org, notify.MemberJoined, sess.User.Name+" <"+sess.User.Email+">", invite.Role, "")
 	web.SetFlash(w, "success", "Welcome to "+org.Name+"!")
 	http.Redirect(w, r, "/orgs/"+org.Slug, http.StatusSeeOther)
 }

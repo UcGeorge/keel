@@ -17,6 +17,7 @@ import (
 	"github.com/UcGeorge/keel/internal/config"
 	"github.com/UcGeorge/keel/internal/githubapp"
 	"github.com/UcGeorge/keel/internal/gitutil"
+	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -184,6 +185,9 @@ func (s *Server) handleRepoCreate(w http.ResponseWriter, r *http.Request, oc *or
 
 	// First sync happens synchronously so the user lands on a meaningful page.
 	s.syncRepo(r.Context(), repo)
+	if fresh, err := s.Q.GetRepo(r.Context(), repo.ID); err == nil {
+		s.publishRepoEvent(oc, notify.RepoConnected, fresh, "A repository was connected and its keel.yaml read for the first time.")
+	}
 	web.SetFlash(w, "success", "Repository connected.")
 	http.Redirect(w, r, oc.urlBase()+"/repos/"+repo.Name, http.StatusSeeOther)
 }
@@ -316,6 +320,9 @@ func (s *Server) handleRepoSync(w http.ResponseWriter, r *http.Request, rc *repo
 		return
 	}
 	s.syncRepo(r.Context(), rc.Repo)
+	if fresh, err := s.Q.GetRepo(r.Context(), rc.Repo.ID); err == nil {
+		s.publishRepoEvent(rc.orgCtx, notify.RepoSynced, fresh, "The repository was synced by hand and its configuration re-read.")
+	}
 	web.SetFlash(w, "success", "Repository synced.")
 	http.Redirect(w, r, rc.repoURL(), http.StatusSeeOther)
 }
@@ -383,6 +390,9 @@ func (s *Server) handleRepoSettingsSave(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	s.syncRepo(r.Context(), updated)
+	if fresh, err := s.Q.GetRepo(r.Context(), updated.ID); err == nil {
+		s.publishRepoEvent(rc.orgCtx, notify.RepoSynced, fresh, "Repository settings were saved and the configuration re-read.")
+	}
 	web.SetFlash(w, "success", "Repository settings saved.")
 	http.Redirect(w, r, rc.urlBase()+"/repos/"+updated.Name+"/settings", http.StatusSeeOther)
 }
@@ -402,6 +412,7 @@ func (s *Server) handleRepoDelete(w http.ResponseWriter, r *http.Request, rc *re
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not disconnect the repository")
 		return
 	}
+	s.publishRepoEvent(rc.orgCtx, notify.RepoDisconnected, rc.Repo, "The repository, its targets, saved variables, and run history were removed from Keel Cloud.")
 	web.SetFlash(w, "success", "Repository disconnected.")
 	http.Redirect(w, r, rc.urlBase(), http.StatusSeeOther)
 }
@@ -483,6 +494,19 @@ func (s *Server) handlePush(ctx context.Context, ev *githubapp.PushEvent) {
 		fresh, err := s.Q.GetRepo(ctx, repo.ID)
 		if err != nil {
 			continue
+		}
+		if fresh.ConfigYaml != repo.ConfigYaml || fresh.Status != repo.Status {
+			if org, err := s.Q.GetOrg(ctx, repo.OrgID); err == nil {
+				s.publish(org.ID, s.orgEvent(org, notify.RepoSynced,
+					"Repository "+fresh.Name+" synced",
+					fmt.Sprintf("A push to %s changed the Keel configuration.", fresh.Branch),
+					s.orgLink(org, "/repos/"+fresh.Name), "Open the repository",
+					notify.Fact{Label: "Repository", Value: fresh.Name},
+					notify.Fact{Label: "Source", Value: fresh.GitUrl + " (" + fresh.Branch + ")"},
+					notify.Fact{Label: "Configuration", Value: configStatusText(fresh)},
+					notify.Fact{Label: "By", Value: "push " + ev.After[:min(7, len(ev.After))]},
+				))
+			}
 		}
 		cfg := repoConfig(fresh)
 		if cfg == nil {

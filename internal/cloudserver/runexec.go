@@ -14,6 +14,7 @@ import (
 	"github.com/UcGeorge/keel/internal/config"
 	"github.com/UcGeorge/keel/internal/engine"
 	"github.com/UcGeorge/keel/internal/gitutil"
+	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/runhub"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
@@ -77,6 +78,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request, rc *repoCt
 		return
 	}
 	s.startRun(run, rc.Repo, d, t.Name, values)
+	s.publishRunEvent(r.Context(), notify.RunStarted, run.ID, rc.Repo)
 	http.Redirect(w, r, rc.repoURL()+"/runs/"+run.ID.String(), http.StatusSeeOther)
 }
 
@@ -125,6 +127,7 @@ func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.D
 		return err
 	}
 	s.startRun(run, repo, d, t.Name, values)
+	s.publishRunEvent(ctx, notify.RunStarted, run.ID, repo)
 	return nil
 }
 
@@ -191,6 +194,9 @@ func (s *Server) startRun(run *clouddb.Run, repo *clouddb.Repo, d *config.Deploy
 				slog.Error("skip unfinished steps", "run", runID, "err", err)
 			}
 			s.Hub.End(runID, status)
+			if kind, ok := runKindForStatus(status); ok {
+				s.publishRunEvent(bg, kind, run.ID, repo)
+			}
 		}
 
 		// Phase 0: clone the repository at the configured branch.

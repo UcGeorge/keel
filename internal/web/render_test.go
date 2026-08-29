@@ -241,6 +241,15 @@ func TestRenderAllPages(t *testing.T) {
 			Invites: []InviteVM{{ID: "i1", Email: "new@example.com", Role: "member", ExpiresAt: time.Now().Add(24 * time.Hour)}},
 		},
 		"cloud/org_settings.html": PageOrgSettings{Base: cloudBase(), OrgName: "Acme", Personal: false, IsOwner: true},
+		"cloud/notifications.html": PageNotifications{
+			Base: cloudBase(), URLBase: "/orgs/pete", AIConfigured: true, AIURL: "/orgs/pete/ai",
+			SMTP:         SMTPFormVM{Configured: true, Host: "smtp.example.com", Port: "587", Encryption: "starttls", FromAddress: "keel@example.com", HasPassword: true, Errors: map[string]string{}, LastTestAt: &now, LastTestError: "connection refused"},
+			Categories:   []EventCategoryVM{{Name: "Deployments", Events: []EventInfoVM{{Kind: "run.failed", Label: "Deployment failed", Description: "A step failed."}}}},
+			Recipients:   []RecipientVM{{ID: "r1", Email: "ops@example.com", Enabled: true, Events: map[string]bool{"run.failed": true}, Count: 1, IsMember: true, IncludeInsight: true}},
+			Deliveries:   []DeliveryVM{{Event: "Deployment failed", Subject: "[Keel] prod failed", Recipients: "ops@example.com", Status: "failed", Error: "boom", CreatedAt: now}},
+			NewRecipient: RecipientVM{Email: "new@example.com", Events: map[string]bool{}}, NewError: "Tick at least one event.",
+			MemberEmails: []string{"pete@example.com"},
+		},
 		"cloud/ai.html": PageAI{
 			Base: cloudBase(), URLBase: "/orgs/pete", Configured: true, BaseURL: "https://api.openai.com/v1", Model: "gpt-4o-mini", HasKey: true, VerifiedAt: &now,
 			Presets:     []AIPresetVM{{Name: "OpenAI", BaseURL: "https://api.openai.com/v1"}},
@@ -313,6 +322,22 @@ func TestRunInputsAndInsightRender(t *testing.T) {
 	r.RenderFragment(rec, "runs.html", "runs_table", table)
 	if !strings.Contains(rec.Body.String(), "ACTION=") {
 		t.Error("runs table missing input chips")
+	}
+
+	notif := PageNotifications{
+		Base: cloudBase(), URLBase: "/orgs/pete",
+		SMTP:         SMTPFormVM{Errors: map[string]string{"host": "The server host is required."}},
+		Categories:   []EventCategoryVM{{Name: "Deployments", Events: []EventInfoVM{{Kind: "run.failed", Label: "Deployment failed"}}}},
+		Recipients:   []RecipientVM{{ID: "r1", Email: "ops@example.com", Enabled: false, Events: map[string]bool{}, IncludeInsight: true}},
+		NewRecipient: RecipientVM{Events: map[string]bool{}},
+	}
+	rec = httptest.NewRecorder()
+	r.Render(rec, 200, "cloud/notifications.html", notif)
+	body = rec.Body.String()
+	for _, want := range []string{"No mail server yet", "The server host is required.", "paused", "+ AI insight", "set up AI insights", "Nothing sent yet"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("notifications page missing %q", want)
+		}
 	}
 
 	rec = httptest.NewRecorder()

@@ -163,3 +163,11 @@ environment variables:
 Host needs PostgreSQL 13+, `git`, and the Docker CLI with a reachable
 daemon. `GET /healthz` returns `ok`. Full guide:
 https://keel-cloud.mintlify.site/cloud/self-hosting.
+
+Per-organization features configured in the UI by owners/admins (not by
+environment variables): **Notifications** (SMTP server + recipients
+subscribed to run/repository/target/member events —
+https://keel-cloud.mintlify.site/cloud/notifications) and **AI insights**
+(any OpenAI-compatible base URL + key + model; explains failed runs —
+https://keel-cloud.mintlify.site/cloud/ai-insights). Every run records the
+inputs it started with (secrets as "set" only) on its run page.

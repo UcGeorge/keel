@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/UcGeorge/keel/internal/auth"
+	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
@@ -150,6 +151,7 @@ func (s *Server) handleMemberInvite(w http.ResponseWriter, r *http.Request, oc *
 		return
 	}
 	link := s.Cfg.BaseURL + "/invites/" + token
+	s.publishMemberEvent(oc.Org, notify.MemberInvited, email, role, oc.Sess.User.Name)
 	s.renderMembers(w, r, oc, link, "", http.StatusOK)
 }
 
@@ -196,6 +198,11 @@ func (s *Server) handleMemberRemove(w http.ResponseWriter, r *http.Request, oc *
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not remove the member")
 		return
 	}
+	who := target.UserID.String()
+	if u, err := s.Q.GetUser(r.Context(), target.UserID); err == nil {
+		who = u.Name + " <" + u.Email + ">"
+	}
+	s.publishMemberEvent(oc.Org, notify.MemberRemoved, who, target.Role, oc.Sess.User.Name)
 	web.SetFlash(w, "success", "Member removed.")
 	http.Redirect(w, r, oc.urlBase()+"/members", http.StatusSeeOther)
 }

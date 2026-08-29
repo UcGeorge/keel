@@ -1,5 +1,7 @@
 {
   "cSpell.words": [
+    "clouddb",
+    "devdb",
     "frontmatter",
     "gofmt",
     "healthcheck",
@@ -8,6 +10,7 @@
     "sqlc",
     "sslmode",
     "stylesheet",
+    "timestamptz",
     "trimpath"
   ]
 }

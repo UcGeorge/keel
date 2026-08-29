@@ -22,6 +22,9 @@ backed by PostgreSQL, and extended with:
   when their branch receives a push, if their variables are complete.
 - **Runs on the server** — fresh clone per run, Docker on the host, live
   logs over SSE, persisted history, secret masking, per-target concurrency.
+- **Email notifications** — your SMTP server, recipients subscribed to the
+  events they care about: runs starting, succeeding, or failing (with the
+  last log lines), repository, target, and member changes.
 - **AI insights** — a plain-language explanation of any failed run from
   the OpenAI-compatible model you configure.
 

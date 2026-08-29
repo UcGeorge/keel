@@ -1,0 +1,232 @@
+{{define "content"}}
+<div class="mx-auto w-full max-w-4xl space-y-8">
+  <div>
+    <h1 class="text-xl font-semibold tracking-tight text-slate-900">Notifications</h1>
+    <p class="mt-1 text-sm text-slate-500">Email people when deployments start, finish, or fail — and about changes to repositories, targets, and members. Configure the mail server once, then add recipients and pick the events each one gets.</p>
+  </div>
+
+  {{if not .SMTP.Configured}}
+  <div class="rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+    <p class="font-medium">No mail server yet</p>
+    <p class="mt-0.5">Recipients can be added at any time, but nothing is sent until an SMTP server is configured below.</p>
+  </div>
+  {{end}}
+
+  <section class="rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-4">
+      <h2 class="text-sm font-semibold text-slate-900">Mail server (SMTP)</h2>
+      {{if .SMTP.Configured}}
+      {{if .SMTP.LastTestAt}}
+        {{if .SMTP.LastTestError}}
+        <span class="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-600/20">last test failed {{timeago .SMTP.LastTestAt}}</span>
+        {{else}}
+        <span class="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-600/20">test email sent {{timeago .SMTP.LastTestAt}}</span>
+        {{end}}
+      {{else}}
+      <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-500/20">saved, not tested yet</span>
+      {{end}}
+      <form method="post" action="{{.URLBase}}/notifications/smtp/test" class="ml-auto">
+        {{template "csrf_field" .CSRF}}
+        <button type="submit" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Send a test email to {{.User.Email}}</button>
+      </form>
+      {{end}}
+    </div>
+    {{with .SMTP.LastTestError}}
+    <div class="border-b border-red-100 bg-red-50 px-6 py-3 text-sm text-red-800"><span class="font-medium">Last test failed:</span> {{.}}</div>
+    {{end}}
+    <form method="post" action="{{.URLBase}}/notifications/smtp" class="grid gap-4 p-6 sm:grid-cols-6">
+      {{template "csrf_field" .CSRF}}
+      {{$e := .SMTP.Errors}}
+      <div class="sm:col-span-4">
+        <label for="host" class="block text-sm font-medium text-slate-900">Server host</label>
+        <input type="text" id="host" name="host" value="{{.SMTP.Host}}" required placeholder="smtp.example.com" autocomplete="off"
+          class="mt-1.5 block w-full rounded-md border {{if $e.host}}border-red-400{{else}}border-slate-300{{end}} px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        {{with $e.host}}<p class="mt-1 text-xs text-red-600">{{.}}</p>{{end}}
+      </div>
+      <div class="sm:col-span-2">
+        <label for="port" class="block text-sm font-medium text-slate-900">Port</label>
+        <input type="number" id="port" name="port" value="{{.SMTP.Port}}" required min="1" max="65535"
+          class="mt-1.5 block w-full rounded-md border {{if $e.port}}border-red-400{{else}}border-slate-300{{end}} px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        {{with $e.port}}<p class="mt-1 text-xs text-red-600">{{.}}</p>{{end}}
+      </div>
+      <div class="sm:col-span-2">
+        <label for="encryption" class="block text-sm font-medium text-slate-900">Encryption</label>
+        <select id="encryption" name="encryption" class="mt-1.5 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+          <option value="starttls" {{if eq .SMTP.Encryption "starttls"}}selected{{end}}>STARTTLS (port 587)</option>
+          <option value="tls" {{if eq .SMTP.Encryption "tls"}}selected{{end}}>TLS (port 465)</option>
+          <option value="none" {{if eq .SMTP.Encryption "none"}}selected{{end}}>None (local relay)</option>
+        </select>
+      </div>
+      <div class="sm:col-span-2">
+        <label for="username" class="block text-sm font-medium text-slate-900">Username <span class="font-normal text-slate-400">optional</span></label>
+        <input type="text" id="username" name="username" value="{{.SMTP.Username}}" autocomplete="off"
+          class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+      </div>
+      <div class="sm:col-span-2">
+        <label for="password" class="block text-sm font-medium text-slate-900">Password <span class="font-normal text-slate-400">optional</span></label>
+        <input type="password" id="password" name="password" autocomplete="new-password"
+          placeholder="{{if .SMTP.HasPassword}}•••••••• (saved — leave blank to keep){{end}}"
+          class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+      </div>
+      <div class="sm:col-span-3">
+        <label for="from_address" class="block text-sm font-medium text-slate-900">From address</label>
+        <input type="email" id="from_address" name="from_address" value="{{.SMTP.FromAddress}}" required placeholder="keel@company.com"
+          class="mt-1.5 block w-full rounded-md border {{if $e.from_address}}border-red-400{{else}}border-slate-300{{end}} px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+        {{with $e.from_address}}<p class="mt-1 text-xs text-red-600">{{.}}</p>{{end}}
+      </div>
+      <div class="sm:col-span-3">
+        <label for="from_name" class="block text-sm font-medium text-slate-900">From name <span class="font-normal text-slate-400">optional</span></label>
+        <input type="text" id="from_name" name="from_name" value="{{.SMTP.FromName}}" placeholder="Keel Cloud"
+          class="mt-1.5 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+      </div>
+      <div class="flex items-center gap-3 sm:col-span-6">
+        <button type="submit" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800">Save mail server</button>
+        <span class="text-xs text-slate-400">The password is stored encrypted. Save, then send yourself a test email.</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="space-y-4">
+    <div>
+      <h2 class="text-base font-semibold text-slate-900">Recipients</h2>
+      <p class="mt-0.5 text-sm text-slate-500">Anyone with an email address — a teammate, a client's operations mailbox, an alerting inbox. Each recipient gets exactly the events ticked for them.</p>
+    </div>
+
+    {{if .Recipients}}
+    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <ul class="divide-y divide-slate-100">
+        {{range .Recipients}}
+        <li>
+          <details class="group">
+            <summary class="flex cursor-pointer select-none flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3 hover:bg-slate-50">
+              <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg>
+              <span class="text-sm font-medium text-slate-900">{{.Email}}</span>
+              {{if .IsMember}}<span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">member</span>{{end}}
+              {{if not .Enabled}}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-600/20">paused</span>{{end}}
+              {{if .IncludeInsight}}<span class="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-violet-600/20">+ AI insight</span>{{end}}
+              <span class="ml-auto text-xs text-slate-500">{{if .Count}}{{.Count}} event{{if ne .Count 1}}s{{end}}{{else}}no events{{end}}</span>
+            </summary>
+            <div class="border-t border-slate-100 bg-slate-50 px-5 py-4">
+              <form method="post" action="{{$.URLBase}}/notifications/recipients/{{.ID}}/update" class="space-y-4">
+                {{template "csrf_field" $.CSRF}}
+                <div class="flex flex-wrap items-end gap-4">
+                  <div class="grow">
+                    <label class="block text-xs font-medium text-slate-500">Email</label>
+                    <input type="email" name="email" value="{{.Email}}" required class="mt-1 block w-full max-w-md rounded-md border border-slate-300 px-3 py-1.5 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                  </div>
+                  <label class="flex items-center gap-2 pb-2 text-sm text-slate-700">
+                    <input type="checkbox" name="enabled" value="true" {{if .Enabled}}checked{{end}} class="h-4 w-4 rounded border-slate-300 text-teal-600"> Enabled
+                  </label>
+                </div>
+                {{template "event_checkboxes" dict "Categories" $.Categories "Selected" .Events "Prefix" .ID}}
+                {{template "insight_option" dict "Checked" .IncludeInsight "AIConfigured" $.AIConfigured "AIURL" $.AIURL}}
+                <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+                  <button type="submit" class="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800">Save</button>
+                  <button type="submit" form="rm-{{.ID}}" class="text-sm font-medium text-red-700 hover:text-red-800">Remove recipient</button>
+                </div>
+              </form>
+              <form method="post" action="{{$.URLBase}}/notifications/recipients/{{.ID}}/delete" id="rm-{{.ID}}" onsubmit="return confirm('Remove this recipient?')">{{template "csrf_field" $.CSRF}}</form>
+            </div>
+          </details>
+        </li>
+        {{end}}
+      </ul>
+    </div>
+    {{end}}
+
+    <div class="rounded-lg border border-slate-200 bg-white p-5">
+      <h3 class="text-sm font-semibold text-slate-900">Add a recipient</h3>
+      {{with .NewError}}<div class="mt-3 rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">{{.}}</div>{{end}}
+      <form method="post" action="{{.URLBase}}/notifications/recipients" class="mt-4 space-y-4">
+        {{template "csrf_field" .CSRF}}
+        <div>
+          <label for="new-email" class="block text-sm font-medium text-slate-900">Email</label>
+          <input type="email" id="new-email" name="email" value="{{.NewRecipient.Email}}" required list="member-emails" placeholder="ops@client.com"
+            class="mt-1.5 block w-full max-w-md rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+          <datalist id="member-emails">{{range .MemberEmails}}<option value="{{.}}">{{end}}</datalist>
+          <p class="mt-1 text-xs text-slate-400">Start typing to pick a member, or enter any address.</p>
+        </div>
+        {{template "event_checkboxes" dict "Categories" .Categories "Selected" .NewRecipient.Events "Prefix" "new"}}
+        {{template "insight_option" dict "Checked" .NewRecipient.IncludeInsight "AIConfigured" .AIConfigured "AIURL" .AIURL}}
+        <button type="submit" class="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-teal-700">Add recipient</button>
+      </form>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="text-base font-semibold text-slate-900">Recent deliveries</h2>
+    <p class="mt-0.5 text-sm text-slate-500">The last emails Keel tried to send for this organization, newest first.</p>
+    {{if .Deliveries}}
+    <div class="mt-3 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <tbody class="divide-y divide-slate-100">
+          {{range .Deliveries}}
+          <tr>
+            <td class="px-4 py-3">
+              {{if eq .Status "sent"}}<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-600/20">sent</span>{{else}}<span class="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 ring-1 ring-red-600/20">failed</span>{{end}}
+            </td>
+            <td class="px-4 py-3">
+              <p class="text-slate-800">{{.Subject}}</p>
+              <p class="text-xs text-slate-500">{{.Event}} → {{.Recipients}}</p>
+              {{with .Error}}<p class="mt-0.5 text-xs text-red-700">{{.}}</p>{{end}}
+            </td>
+            <td class="whitespace-nowrap px-4 py-3 text-right text-xs text-slate-400" title="{{datefmt .CreatedAt}}">{{timeago .CreatedAt}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="mt-3 text-sm text-slate-400">Nothing sent yet.</p>
+    {{end}}
+  </section>
+</div>
+
+<script>
+  // "All" toggles per category.
+  document.querySelectorAll('[data-toggle-category]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var boxes = btn.closest('fieldset').querySelectorAll('input[type=checkbox]');
+      var allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+      boxes.forEach(function (b) { b.checked = !allOn; });
+    });
+  });
+</script>
+{{end}}
+
+{{/* event_checkboxes renders the subscription checkboxes grouped by
+     category. Context: dict Categories []web.EventCategoryVM,
+     Selected map[string]bool, Prefix string (unique per form). */}}
+{{define "event_checkboxes"}}
+{{$sel := .Selected}}{{$prefix := .Prefix}}
+<div class="grid gap-4 sm:grid-cols-2">
+  {{range .Categories}}
+  <fieldset class="rounded-md border border-slate-200 bg-white p-3">
+    <legend class="flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{{.Name}}
+      <button type="button" data-toggle-category class="rounded px-1 text-[11px] font-medium normal-case tracking-normal text-teal-700 hover:bg-teal-50">all</button>
+    </legend>
+    <div class="mt-1 space-y-1.5">
+      {{range .Events}}
+      <label class="flex items-start gap-2 text-sm text-slate-700" title="{{.Description}}">
+        <input type="checkbox" name="events" value="{{.Kind}}" id="{{$prefix}}-{{.Kind}}" {{if index $sel .Kind}}checked{{end}} class="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600">
+        <span>{{.Label}}<span class="block text-[11px] leading-snug text-slate-400">{{.Description}}</span></span>
+      </label>
+      {{end}}
+    </div>
+  </fieldset>
+  {{end}}
+</div>
+{{end}}
+
+{{/* insight_option is the per-recipient "AI insight in failure emails"
+     checkbox. Context: dict Checked bool, AIConfigured bool, AIURL string */}}
+{{define "insight_option"}}
+<label class="flex items-start gap-2.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm text-slate-700">
+  <input type="checkbox" name="include_insight" value="true" {{if .Checked}}checked{{end}} class="mt-0.5 h-4 w-4 rounded border-slate-300 text-violet-600">
+  <span>
+    <span class="font-medium text-violet-900">Include the AI insight in <em>Deployment failed</em> emails</span>
+    <span class="block text-[11px] leading-snug text-violet-800/80">The explanation is generated automatically when a run fails and embedded in the email — it also appears on the run page.
+      {{if .AIConfigured}}AI insights are set up.{{else}}Needs a model: <a href="{{.AIURL}}" class="underline">set up AI insights</a> first, or the email says so instead.{{end}}</span>
+  </span>
+</label>
+{{end}}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/UcGeorge/keel/internal/config"
+	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
@@ -211,6 +212,7 @@ func (s *Server) handleTargetCreate(w http.ResponseWriter, r *http.Request, rc *
 		s.renderDeployment(w, r, rc, d, form, http.StatusUnprocessableEntity)
 		return
 	}
+	s.publishTargetEvent(rc, notify.TargetCreated, d.Name, name, "A new deployment target was created; its variables still need to be filled in.")
 	web.SetFlash(w, "success", fmt.Sprintf("Target %q created — set its variables below.", name))
 	http.Redirect(w, r, s.targetURL(rc, d.Name, name), http.StatusSeeOther)
 }
@@ -399,6 +401,19 @@ func (s *Server) handleValuesSave(w http.ResponseWriter, r *http.Request, rc *re
 			return
 		}
 	}
+	if len(updates) > 0 {
+		var changed []string
+		for _, u := range updates {
+			if u.secret {
+				changed = append(changed, u.name+" (secret)")
+			} else {
+				changed = append(changed, u.name)
+			}
+		}
+		s.publishTargetEvent(rc, notify.TargetValuesChanged, d.Name, t.Name,
+			fmt.Sprintf("%d variable value(s) were saved on the target.", len(updates)),
+			notify.Fact{Label: "Changed", Value: strings.Join(changed, ", ")})
+	}
 	// Valid values are persisted even when some fields fail — the re-rendered
 	// form keeps everything the user typed and flags only the invalid fields.
 	if len(fieldErrors) > 0 {
@@ -460,6 +475,7 @@ func (s *Server) handleTargetDelete(w http.ResponseWriter, r *http.Request, rc *
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not delete the target")
 		return
 	}
+	s.publishTargetEvent(rc, notify.TargetDeleted, d.Name, t.Name, "The target and its saved variables were deleted; its run history is kept.")
 	web.SetFlash(w, "success", fmt.Sprintf("Target %q deleted.", t.Name))
 	http.Redirect(w, r, s.depURL(rc, d.Name), http.StatusSeeOther)
 }

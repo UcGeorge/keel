@@ -312,6 +312,66 @@ SELECT * FROM run_inputs
 WHERE run_id = ANY($1::uuid[]) AND deploy_time = true AND is_secret = false
 ORDER BY run_id, idx;
 
+-- SMTP settings --------------------------------------------------------------
+
+-- name: GetOrgSMTP :one
+SELECT * FROM org_smtp_settings WHERE org_id = $1;
+
+-- name: UpsertOrgSMTP :exec
+INSERT INTO org_smtp_settings (org_id, host, port, username, password_enc, encryption, from_address, from_name, updated_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (org_id) DO UPDATE SET
+    host = excluded.host, port = excluded.port, username = excluded.username,
+    password_enc = excluded.password_enc, encryption = excluded.encryption,
+    from_address = excluded.from_address, from_name = excluded.from_name,
+    updated_by = excluded.updated_by, updated_at = now();
+
+-- name: SetOrgSMTPTest :exec
+UPDATE org_smtp_settings SET last_test_at = now(), last_test_error = $2 WHERE org_id = $1;
+
+-- name: DeleteOrgSMTP :exec
+DELETE FROM org_smtp_settings WHERE org_id = $1;
+
+-- Notification recipients ----------------------------------------------------
+
+-- name: CreateRecipient :one
+INSERT INTO notification_recipients (org_id, email, events, enabled, include_insight, created_by)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: GetRecipient :one
+SELECT * FROM notification_recipients WHERE id = $1 AND org_id = $2;
+
+-- name: ListRecipients :many
+SELECT * FROM notification_recipients WHERE org_id = $1 ORDER BY lower(email);
+
+-- name: ListRecipientsForEvent :many
+SELECT * FROM notification_recipients
+WHERE org_id = $1 AND enabled = true AND $2::text = ANY(events)
+ORDER BY lower(email);
+
+-- name: UpdateRecipient :exec
+UPDATE notification_recipients SET email = $3, events = $4, enabled = $5, include_insight = $6, updated_at = now()
+WHERE id = $1 AND org_id = $2;
+
+-- name: DeleteRecipient :exec
+DELETE FROM notification_recipients WHERE id = $1 AND org_id = $2;
+
+-- Notification deliveries ----------------------------------------------------
+
+-- name: InsertDelivery :exec
+INSERT INTO notification_deliveries (org_id, event, subject, recipients, status, error)
+VALUES ($1, $2, $3, $4, $5, $6);
+
+-- name: ListDeliveries :many
+SELECT * FROM notification_deliveries WHERE org_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2;
+
+-- name: PruneDeliveries :exec
+DELETE FROM notification_deliveries d
+WHERE d.org_id = $1 AND d.id NOT IN (
+    SELECT k.id FROM notification_deliveries k WHERE k.org_id = $1 ORDER BY k.created_at DESC, k.id DESC LIMIT $2
+);
+
 -- AI settings and insights ---------------------------------------------------
 
 -- name: GetOrgAI :one

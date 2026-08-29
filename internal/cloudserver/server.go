@@ -220,6 +220,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /orgs/{org}/settings", org(s.handleOrgSettings))
 	mux.HandleFunc("POST /orgs/{org}/settings", org(s.handleOrgSettingsSave))
 	mux.HandleFunc("POST /orgs/{org}/delete", org(s.handleOrgDelete))
+	mux.HandleFunc("GET /orgs/{org}/notifications", org(s.handleNotifications))
+	mux.HandleFunc("POST /orgs/{org}/notifications/smtp", org(s.handleSMTPSave))
+	mux.HandleFunc("POST /orgs/{org}/notifications/smtp/test", org(s.handleSMTPTest))
+	mux.HandleFunc("POST /orgs/{org}/notifications/recipients", org(s.handleRecipientCreate))
+	mux.HandleFunc("POST /orgs/{org}/notifications/recipients/{id}/update", org(s.handleRecipientUpdate))
+	mux.HandleFunc("POST /orgs/{org}/notifications/recipients/{id}/delete", org(s.handleRecipientDelete))
 	mux.HandleFunc("GET /orgs/{org}/ai", org(s.handleAI))
 	mux.HandleFunc("POST /orgs/{org}/ai", org(s.handleAISave))
 	mux.HandleFunc("POST /orgs/{org}/ai/models", org(s.handleAIModels))
@@ -479,6 +485,7 @@ func (s *Server) base(w http.ResponseWriter, r *http.Request, sess *sessionInfo,
 			{Label: "Members", Href: base + "/members"},
 		}
 		if oc.isAdmin() {
+			nav = append(nav, web.NavItem{Label: "Notifications", Href: base + "/notifications"})
 			nav = append(nav, web.NavItem{Label: "AI", Href: base + "/ai"})
 		}
 		if oc.isOwner() {

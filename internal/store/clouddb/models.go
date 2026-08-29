@@ -18,6 +18,29 @@ type GithubInstallation struct {
 	CreatedAt      time.Time
 }
 
+type NotificationDelivery struct {
+	ID         uuid.UUID
+	OrgID      uuid.UUID
+	Event      string
+	Subject    string
+	Recipients []string
+	Status     string
+	Error      string
+	CreatedAt  time.Time
+}
+
+type NotificationRecipient struct {
+	ID             uuid.UUID
+	OrgID          uuid.UUID
+	Email          string
+	Events         []string
+	Enabled        bool
+	CreatedBy      uuid.NullUUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	IncludeInsight bool
+}
+
 type Org struct {
 	ID        uuid.UUID
 	Slug      string
@@ -58,6 +81,21 @@ type OrgMember struct {
 	CanConfigure bool
 	CanDeploy    bool
 	CreatedAt    time.Time
+}
+
+type OrgSmtpSetting struct {
+	OrgID         uuid.UUID
+	Host          string
+	Port          int32
+	Username      string
+	PasswordEnc   []byte
+	Encryption    string
+	FromAddress   string
+	FromName      string
+	LastTestAt    *time.Time
+	LastTestError string
+	UpdatedBy     uuid.NullUUID
+	UpdatedAt     time.Time
 }
 
 type Repo struct {

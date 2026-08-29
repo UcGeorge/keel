@@ -39,6 +39,10 @@ operators — can run through a clean web UI.
   (`ACTION=destroy`, an image tag) and the target's configuration at that
   moment, so a run stays explainable a week later. Secret inputs are
   recorded as *set*, never as values.
+- **Email notifications** (Keel Cloud) go out through your SMTP server to
+  recipients subscribed per event — runs starting, succeeding, or failing
+  with the last log lines and a link, repository, target, and member
+  changes.
 - **AI insights** (Keel Cloud) explain a failed run in plain language —
   what happened, the likely cause, what to do next, and the technical
   detail — using any OpenAI-compatible model you configure, with the log
@@ -55,6 +59,7 @@ default follows the system preference):
 | Users | just you | organizations, roles, scopes, invites |
 | Repos | the directory you run it in | connected via git URL or GitHub App |
 | CI | — | push-triggered auto-deploys via GitHub App webhooks |
+| Notifications | — | email via your SMTP server, per-recipient event subscriptions |
 | AI insights | — | failed-run explanations from any OpenAI-compatible model |
 
 ## Documentation
@@ -187,7 +192,8 @@ internal/engine     Docker execution engine (build → run steps, log streaming)
 internal/manifest   variable manifest generation
 internal/web        shared templates (html/template + HTMX + Tailwind), view models
 internal/devserver  keel dev UI
-internal/cloudserver Keel Cloud (orgs, auth, repos, webhooks, AI insights)
+internal/cloudserver Keel Cloud (orgs, auth, repos, webhooks, notifications, AI insights)
+internal/notify     event catalog, email rendering, SMTP delivery
 internal/llm        OpenAI-compatible chat client (models, adaptive requests)
 internal/insight    failed-run context trimming and prompts
 internal/store      sqlc queries + golang-migrate migrations (SQLite & PostgreSQL)

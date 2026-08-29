@@ -283,7 +283,77 @@ type PageAccount struct {
 	Success string
 }
 
-// --- AI insights (cloud) ----------------------------------------------------
+// --- Notifications and AI (cloud) -------------------------------------------
+
+// SMTPFormVM is the SMTP settings form state.
+type SMTPFormVM struct {
+	Configured    bool
+	Host          string
+	Port          string
+	Username      string
+	HasPassword   bool
+	Encryption    string
+	FromAddress   string
+	FromName      string
+	Errors        map[string]string
+	LastTestAt    *time.Time
+	LastTestError string
+}
+
+// RecipientVM is one notification recipient row.
+type RecipientVM struct {
+	ID       string
+	Email    string
+	Enabled  bool
+	Events   map[string]bool
+	Count    int
+	Labels   []string
+	IsMember bool
+	// IncludeInsight asks for the AI insight to be generated and embedded
+	// in "Deployment failed" emails.
+	IncludeInsight bool
+}
+
+// DeliveryVM is one row of the delivery log.
+type DeliveryVM struct {
+	Event      string
+	Subject    string
+	Recipients string
+	Status     string
+	Error      string
+	CreatedAt  time.Time
+}
+
+// EventCategoryVM groups event kinds for the subscription checkboxes.
+type EventCategoryVM struct {
+	Name   string
+	Events []EventInfoVM
+}
+
+// EventInfoVM is one subscribable event kind.
+type EventInfoVM struct {
+	Kind        string
+	Label       string
+	Description string
+}
+
+// PageNotifications is the organization notifications page.
+type PageNotifications struct {
+	Base
+	URLBase      string
+	SMTP         SMTPFormVM
+	Recipients   []RecipientVM
+	Categories   []EventCategoryVM
+	MemberEmails []string
+	Deliveries   []DeliveryVM
+	// NewRecipient carries the add form back after a validation error.
+	NewRecipient RecipientVM
+	NewError     string
+	// AIConfigured reports whether AI insights are set up, so the
+	// include-insight option can say what it needs.
+	AIConfigured bool
+	AIURL        string
+}
 
 // AIPresetVM is one provider shortcut on the AI settings page.
 type AIPresetVM struct {

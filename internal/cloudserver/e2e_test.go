@@ -8,8 +8,12 @@ package cloudserver
 // disposable container.
 
 import (
+	"bufio"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cgi"
 	"net/http/cookiejar"
@@ -56,6 +60,24 @@ deployments:
         label: Service URL
       ROTATED_KEY:
         secret: true
+  fail:
+    description: E2E failing deployment.
+    environment:
+      dockerfile: deploy/Dockerfile
+    steps:
+      - name: Prepare
+        run: echo preparing
+      - name: Break
+        run: |
+          echo "about to fail with MODE=$MODE"
+          exit 3
+    variables:
+      MODE:
+        label: Mode
+        type: select
+        deploy_time: true
+        default: plan
+        options: [plan, apply]
 `
 
 func dockerOK() bool { return exec.Command("docker", "version").Run() == nil }
@@ -338,6 +360,152 @@ func TestCloudEndToEnd(t *testing.T) {
 	if !strings.Contains(body, "Latest outputs") || !strings.Contains(body, "https://e2e.example.com/client-a") {
 		t.Errorf("target page missing latest outputs")
 	}
+	// The run page records the inputs it was started with: the value, and
+	// for the secret only that it was set.
+	body, _ = owner.get(runPath)
+	if !strings.Contains(body, "Inputs") || !strings.Contains(body, "ahoy-e2e") || !strings.Contains(body, "SECRET_TOKEN") {
+		t.Errorf("run page missing inputs:\n%s", tail(body, 3000))
+	}
+	if strings.Contains(body, "supersecret-e2e-42") {
+		t.Errorf("secret input value leaked into the run page")
+	}
+
+	// --- notifications: SMTP, recipients, and a failed-run email ------------
+	smtp := startFakeSMTP(t)
+	defer smtp.ln.Close()
+	notifPath := orgPath + "/notifications"
+	csrf = owner.csrf(notifPath)
+	body, code = owner.post(notifPath+"/smtp", url.Values{
+		"_csrf": {csrf}, "host": {"127.0.0.1"}, "port": {smtp.port()}, "encryption": {"none"},
+		"from_address": {"keel@e2e.test"}, "from_name": {"Keel E2E"},
+	})
+	if code != 200 || !strings.Contains(body, "Mail server saved") {
+		t.Fatalf("smtp save code %d:\n%.500s", code, body)
+	}
+	if body, code = owner.post(notifPath+"/smtp/test", url.Values{"_csrf": {csrf}}); code != 200 || !strings.Contains(body, "Test email sent") {
+		t.Fatalf("smtp test code %d:\n%.500s", code, body)
+	}
+	if m := awaitMail(t, smtp, "configured correctly"); !strings.Contains(m, "To: owner@e2e.test") {
+		t.Errorf("test email not addressed to the owner:\n%.400s", m)
+	}
+	body, code = owner.post(notifPath+"/recipients", url.Values{
+		"_csrf": {csrf}, "email": {"ops@e2e.test"}, "events": {"run.failed", "run.succeeded", "target.created"},
+		"include_insight": {"true"},
+	})
+	if code != 200 || !strings.Contains(body, "ops@e2e.test") || !strings.Contains(body, "+ AI insight") {
+		t.Fatalf("add recipient code %d:\n%.500s", code, body)
+	}
+	// A second recipient without the insight option gets the plain email.
+	if _, code = owner.post(notifPath+"/recipients", url.Values{
+		"_csrf": {csrf}, "email": {"plain@e2e.test"}, "events": {"run.failed"},
+	}); code != 200 {
+		t.Fatalf("add plain recipient code %d", code)
+	}
+
+	// --- AI insights: list models, test, save -------------------------------
+	llmSrv := fakeLLM(t)
+	aiPath := orgPath + "/ai"
+	csrf = owner.csrf(aiPath)
+	aiForm := url.Values{"_csrf": {csrf}, "base_url": {llmSrv.URL + "/v1/"}, "api_key": {"e2e-key"}}
+	body, code = owner.post(aiPath+"/models", aiForm)
+	if code != 200 || !strings.Contains(body, `value="e2e-model"`) || strings.Contains(body, "text-embedding-x") {
+		t.Fatalf("models fragment code %d:\n%.600s", code, body)
+	}
+	aiForm.Set("model", "e2e-model")
+	body, code = owner.post(aiPath+"/test", aiForm)
+	if code != 200 || !strings.Contains(body, "answered") || !strings.Contains(body, "hx-swap-oob") {
+		t.Fatalf("test fragment code %d:\n%.600s", code, body)
+	}
+	body, code = owner.post(aiPath, aiForm)
+	if code != 200 || !strings.Contains(body, "AI insights are on") {
+		t.Fatalf("ai save code %d:\n%.600s", code, body)
+	}
+	// A wrong key must not be saved.
+	bad := url.Values{"_csrf": {csrf}, "base_url": {llmSrv.URL + "/v1"}, "api_key": {"wrong"}, "model": {"e2e-model"}}
+	if body, code = owner.post(aiPath, bad); code != 422 || !strings.Contains(body, "not saved") {
+		t.Errorf("bad key save code %d:\n%.400s", code, body)
+	}
+
+	// --- a failing run: chips, insight, email --------------------------------
+	failDep := repoPath + "/deployments/fail"
+	csrf = owner.csrf(failDep)
+	if _, code = owner.post(failDep+"/targets", url.Values{"_csrf": {csrf}, "name": {"client-b"}}); code != 200 {
+		t.Fatalf("create fail target code %d", code)
+	}
+	awaitMail(t, smtp, "client-b")
+	failTarget := failDep + "/targets/client-b"
+	body, code = owner.post(failTarget+"/deploy", url.Values{"_csrf": {csrf}, "MODE": {"apply"}})
+	if code != 200 {
+		t.Fatalf("fail deploy code %d:\n%.500s", code, body)
+	}
+	fm := runRe.FindStringSubmatch(body)
+	if fm == nil {
+		t.Fatalf("no run link for the failing deploy")
+	}
+	failRun := repoPath + "/runs/" + fm[1]
+	deadline = time.Now().Add(180 * time.Second)
+	status = ""
+	for time.Now().Before(deadline) {
+		body, _ = owner.get(failRun)
+		if strings.Contains(body, ">failed<") {
+			status = "failed"
+			break
+		}
+		if strings.Contains(body, ">succeeded<") || strings.Contains(body, ">canceled<") {
+			t.Fatalf("failing run did not fail:\n%s", tail(body, 2000))
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if status != "failed" {
+		t.Fatalf("failing run did not finish:\n%s", tail(body, 2000))
+	}
+	if !strings.Contains(body, "Chosen when the deploy started") || !strings.Contains(body, ">apply<") {
+		t.Errorf("failed run page missing the deploy-time input:\n%s", tail(body, 3000))
+	}
+	if !strings.Contains(body, "AI insight") || (!strings.Contains(body, "Explain this failure") && !strings.Contains(body, "Regenerate")) {
+		t.Errorf("failed run page missing the insight card")
+	}
+	if tb, _ := owner.get(failTarget); !strings.Contains(tb, "MODE=") {
+		t.Errorf("target run table missing the MODE chip")
+	}
+	// Two failure emails: the plain one, and the one with the auto-generated
+	// insight for the recipient who asked for it.
+	var plainMail, richMail string
+	for i := 0; i < 2; i++ {
+		m := awaitMail(t, smtp, "about to fail with MODE=apply")
+		if strings.Contains(m, "To: ops@e2e.test") {
+			richMail = m
+		} else {
+			plainMail = m
+		}
+	}
+	if plainMail == "" || richMail == "" {
+		t.Fatalf("expected one plain and one rich failure email")
+	}
+	if !strings.Contains(plainMail, "To: plain@e2e.test") || strings.Contains(firstPart(plainMail), "AI insight") {
+		t.Errorf("plain failure email wrong:\n%s", firstPart(plainMail))
+	}
+	failText := firstPart(richMail)
+	for _, want := range []string{"fail → client-b failed", "Failed step:", "2 of 2", "MODE = apply", "/runs/" + fm[1], "AI insight", "The Break step exited on purpose with MODE set to apply (seen in the log)"} {
+		if !strings.Contains(failText, want) {
+			t.Errorf("failure email missing %q:\n%s", want, failText)
+		}
+	}
+	// The auto-generated insight is already on the run page.
+	if body, _ = owner.get(failRun); !strings.Contains(body, "generated for the failure email") || !strings.Contains(body, "exited on purpose") {
+		t.Errorf("auto insight missing from the run page:\n%s", tail(body, 2500))
+	}
+	csrf = csrfRe.FindStringSubmatch(body)[1]
+	body, code = owner.post(failRun+"/insight", url.Values{"_csrf": {csrf}})
+	if code != 200 || !strings.Contains(body, "with MODE set to apply (seen in the log)") || !strings.Contains(body, "asked by E2E Owner") {
+		t.Fatalf("insight fragment code %d:\n%.800s", code, body)
+	}
+	if body, _ = owner.get(failRun); !strings.Contains(body, "The Break step exited on purpose") || !strings.Contains(body, "e2e-model") {
+		t.Errorf("stored insight missing from the run page:\n%s", tail(body, 2000))
+	}
+	if nb, _ := owner.get(notifPath); !strings.Contains(nb, ">sent<") {
+		t.Errorf("delivery log missing sent entries")
+	}
 
 	// --- manifest download ---------------------------------------------------
 	body, code = owner.get(targetPath + "/manifest?sel=1&var=GREETING&download=md")
@@ -398,11 +566,21 @@ func TestCloudEndToEnd(t *testing.T) {
 	if _, code = viewer.post(targetPath+"/deploy", url.Values{"_csrf": {vcsrf2}}); code != 403 {
 		t.Errorf("viewer deploy code %d, want 403", code)
 	}
-	// …and cannot manage members.
+	// …and cannot manage members, notifications, or AI settings.
 	if _, code = viewer.post(orgPath+"/members/invite", url.Values{
 		"_csrf": {vcsrf2}, "email": {"x@y.test"}, "role": {"member"},
 	}); code != 403 {
 		t.Errorf("viewer invite code %d, want 403", code)
+	}
+	if _, code = viewer.get(orgPath + "/notifications"); code != 403 {
+		t.Errorf("viewer notifications code %d, want 403", code)
+	}
+	if _, code = viewer.get(orgPath + "/ai"); code != 403 {
+		t.Errorf("viewer ai code %d, want 403", code)
+	}
+	// A member can still ask for an insight on the failed run.
+	if ib, code := viewer.post(failRun+"/insight", url.Values{"_csrf": {vcsrf2}}); code != 200 || !strings.Contains(ib, "exited on purpose") {
+		t.Errorf("viewer insight code %d:\n%.400s", code, ib)
 	}
 
 	// --- sessions survive password change; others end ------------------------
@@ -419,6 +597,147 @@ func TestCloudEndToEnd(t *testing.T) {
 		t.Errorf("MarkInterruptedRuns: %v", err)
 	}
 	var _ = clouddb.Run{}
+}
+
+// fakeSMTP accepts any number of connections and collects the messages.
+type fakeSMTP struct {
+	ln       net.Listener
+	messages chan string
+}
+
+func startFakeSMTP(t *testing.T) *fakeSMTP {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSMTP{ln: ln, messages: make(chan string, 32)}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go f.serve(conn)
+		}
+	}()
+	return f
+}
+
+func (f *fakeSMTP) port() string {
+	_, port, _ := net.SplitHostPort(f.ln.Addr().String())
+	return port
+}
+
+func (f *fakeSMTP) serve(conn net.Conn) {
+	defer conn.Close()
+	rd := bufio.NewReader(conn)
+	w := func(s string) { conn.Write([]byte(s + "\r\n")) }
+	w("220 fake ESMTP")
+	for {
+		line, err := rd.ReadString('\n')
+		if err != nil {
+			return
+		}
+		cmd := strings.ToUpper(strings.TrimSpace(line))
+		switch {
+		case strings.HasPrefix(cmd, "EHLO"):
+			w("250-fake")
+			w("250 8BITMIME")
+		case cmd == "DATA":
+			w("354 go")
+			var b strings.Builder
+			for {
+				l, err := rd.ReadString('\n')
+				if err != nil || l == ".\r\n" {
+					break
+				}
+				b.WriteString(l)
+			}
+			f.messages <- b.String()
+			w("250 queued")
+		case cmd == "QUIT":
+			w("221 bye")
+			return
+		default:
+			w("250 ok")
+		}
+	}
+}
+
+// firstPart decodes the first base64 body part of a MIME message.
+func firstPart(msg string) string {
+	_, rest, ok := strings.Cut(msg, "base64\r\n\r\n")
+	if !ok {
+		return ""
+	}
+	end := strings.Index(rest, "\r\n--")
+	if end < 0 {
+		end = len(rest)
+	}
+	data, _ := base64.StdEncoding.DecodeString(strings.ReplaceAll(rest[:end], "\r\n", ""))
+	return string(data)
+}
+
+// awaitMail waits for a message whose decoded text contains want.
+func awaitMail(t *testing.T, f *fakeSMTP, want string) string {
+	t.Helper()
+	deadline := time.After(60 * time.Second)
+	for {
+		select {
+		case m := <-f.messages:
+			if strings.Contains(firstPart(m), want) {
+				return m
+			}
+		case <-deadline:
+			t.Fatalf("no email containing %q arrived", want)
+			return ""
+		}
+	}
+}
+
+// fakeLLM is an OpenAI-compatible server that lists one model and answers
+// every chat with a canned insight that echoes part of its input.
+func fakeLLM(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer e2e-key" {
+			w.WriteHeader(401)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"id": "e2e-model"}, {"id": "text-embedding-x"}}})
+	})
+	mux.HandleFunc("POST /v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer e2e-key" {
+			w.WriteHeader(401)
+			w.Write([]byte(`{"error":{"message":"bad key"}}`))
+			return
+		}
+		var req struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Role, Content string
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		user := req.Messages[len(req.Messages)-1].Content
+		reply := "OK"
+		if strings.Contains(user, "Explain this failure") {
+			reply = "## What happened\nThe Break step exited on purpose"
+			if strings.Contains(user, `MODE ("Mode"): "apply" [select, chosen at deploy time]`) {
+				reply += " with MODE set to apply"
+			}
+			if strings.Contains(user, "about to fail with MODE=apply") {
+				reply += " (seen in the log)"
+			}
+			reply += ".\n\n## Likely cause\nA deliberate `exit 3`.\n\n## What to do next\n1. Nothing.\n\n## For the engineer\nRemove the exit."
+		}
+		json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{{"finish_reason": "stop", "message": map[string]any{"role": "assistant", "content": reply}}}})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func tail(s string, n int) string {
