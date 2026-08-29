@@ -57,6 +57,7 @@
               "cloud/organizations-and-permissions",
               "cloud/connect-repositories",
               "cloud/github-app",
+              "cloud/ai-insights",
               "cloud/runs-and-security"
             ]
           }

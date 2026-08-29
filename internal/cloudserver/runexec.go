@@ -372,6 +372,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request, rc *repoCtx) 
 		Run:       vm,
 		Steps:     s.stepVMs(r.Context(), run.ID),
 		Inputs:    web.BuildRunInputsVM(s.runInputVMs(r.Context(), run.ID)),
+		Insight:   s.insightCard(r.Context(), rc, run),
 		Outputs:   s.runOutputVMs(r.Context(), run.ID, d, run.Status == "succeeded", rc.canDeploy() || rc.canConfigure()),
 		CanCancel: rc.canDeploy(),
 		Live:      vm.Active,

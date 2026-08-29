@@ -83,10 +83,12 @@ type PageTarget struct {
 // PageRun is the run detail page (dev and cloud).
 type PageRun struct {
 	Base
-	Run       RunVM
-	Steps     []StepVM
-	Inputs    *RunInputsVM
-	Outputs   []OutputVM
+	Run     RunVM
+	Steps   []StepVM
+	Inputs  *RunInputsVM
+	Outputs []OutputVM
+	// Insight is the AI-insight card for failed runs (cloud); nil hides it.
+	Insight   *InsightCardVM
 	LogLines  []LogLineVM
 	LastSeq   int64
 	EventsURL string
@@ -279,4 +281,70 @@ type PageAccount struct {
 	Email   string
 	Errors  map[string]string
 	Success string
+}
+
+// --- AI insights (cloud) ----------------------------------------------------
+
+// AIPresetVM is one provider shortcut on the AI settings page.
+type AIPresetVM struct {
+	Name    string
+	BaseURL string
+	Hint    string
+}
+
+// PageAI is the organization AI settings page.
+type PageAI struct {
+	Base
+	URLBase    string
+	Configured bool
+	BaseURL    string
+	Model      string
+	HasKey     bool
+	VerifiedAt *time.Time
+	Presets    []AIPresetVM
+	Error      string
+	// ModelPicker and TestResult seed the fragments on first render.
+	ModelPicker AIModelsVM
+	TestResult  AITestVM
+	SaveEnabled bool
+}
+
+// AIModelsVM is the model picker fragment.
+type AIModelsVM struct {
+	Models  []string
+	Current string
+	Error   string
+	// Hidden reports that non-chat models were filtered out.
+	Hidden int
+}
+
+// AITestVM is the connectivity test fragment.
+type AITestVM struct {
+	OK    bool
+	Model string
+	Reply string
+	Error string
+}
+
+// InsightVM is a stored AI explanation of a failed run.
+type InsightVM struct {
+	Content   template.HTML
+	Model     string
+	CreatedAt time.Time
+	CreatedBy string
+	// Auto marks an insight generated for a failure email rather than on
+	// request.
+	Auto bool
+}
+
+// InsightCardVM drives the insight card on a failed run's page.
+type InsightCardVM struct {
+	Insight *InsightVM
+	// URL generates (or regenerates) the insight; empty when AI insights
+	// are not set up.
+	URL string
+	// SetupURL points admins at the AI settings page when unconfigured.
+	SetupURL string
+	Error    string
+	CSRF     string
 }

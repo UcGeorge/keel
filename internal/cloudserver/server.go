@@ -220,6 +220,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /orgs/{org}/settings", org(s.handleOrgSettings))
 	mux.HandleFunc("POST /orgs/{org}/settings", org(s.handleOrgSettingsSave))
 	mux.HandleFunc("POST /orgs/{org}/delete", org(s.handleOrgDelete))
+	mux.HandleFunc("GET /orgs/{org}/ai", org(s.handleAI))
+	mux.HandleFunc("POST /orgs/{org}/ai", org(s.handleAISave))
+	mux.HandleFunc("POST /orgs/{org}/ai/models", org(s.handleAIModels))
+	mux.HandleFunc("POST /orgs/{org}/ai/test", org(s.handleAITest))
+	mux.HandleFunc("POST /orgs/{org}/ai/delete", org(s.handleAIDelete))
 
 	// Repo-scoped.
 	repo := func(h func(http.ResponseWriter, *http.Request, *repoCtx)) http.HandlerFunc {
@@ -235,6 +240,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/runs/{id}", repo(s.handleRun))
 	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/runs/{id}/events", repo(s.handleRunEvents))
 	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/runs/{id}/cancel", repo(s.handleRunCancel))
+	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/runs/{id}/insight", repo(s.handleRunInsight))
 	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}", repo(s.handleDeployment))
 	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets", repo(s.handleTargetCreate))
 	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}/manifest", repo(s.handleManifest))
@@ -379,6 +385,16 @@ func (s *Server) withOrg(h func(http.ResponseWriter, *http.Request, *orgCtx)) ht
 	})
 }
 
+// requireAdmin renders a 403 page and returns false unless the member is
+// an owner or admin.
+func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request, oc *orgCtx, what string) bool {
+	if oc.isAdmin() {
+		return true
+	}
+	s.errorPage(w, r, oc.Sess, http.StatusForbidden, "Only owners and admins can manage "+what)
+	return false
+}
+
 // repoCtx adds the repository to an org scope.
 type repoCtx struct {
 	*orgCtx
@@ -461,6 +477,9 @@ func (s *Server) base(w http.ResponseWriter, r *http.Request, sess *sessionInfo,
 			{Label: "Repositories", Href: base},
 			{Label: "Runs", Href: base + "/runs"},
 			{Label: "Members", Href: base + "/members"},
+		}
+		if oc.isAdmin() {
+			nav = append(nav, web.NavItem{Label: "AI", Href: base + "/ai"})
 		}
 		if oc.isOwner() {
 			nav = append(nav, web.NavItem{Label: "Settings", Href: base + "/settings"})

@@ -39,6 +39,10 @@ operators — can run through a clean web UI.
   (`ACTION=destroy`, an image tag) and the target's configuration at that
   moment, so a run stays explainable a week later. Secret inputs are
   recorded as *set*, never as values.
+- **AI insights** (Keel Cloud) explain a failed run in plain language —
+  what happened, the likely cause, what to do next, and the technical
+  detail — using any OpenAI-compatible model you configure, with the log
+  trimmed to fit the model's context and secrets never sent.
 
 Keel ships in two forms sharing the same engine and the same UI — with a
 light and a dark theme (the header toggle remembers your choice; the
@@ -51,6 +55,7 @@ default follows the system preference):
 | Users | just you | organizations, roles, scopes, invites |
 | Repos | the directory you run it in | connected via git URL or GitHub App |
 | CI | — | push-triggered auto-deploys via GitHub App webhooks |
+| AI insights | — | failed-run explanations from any OpenAI-compatible model |
 
 ## Documentation
 
@@ -182,7 +187,9 @@ internal/engine     Docker execution engine (build → run steps, log streaming)
 internal/manifest   variable manifest generation
 internal/web        shared templates (html/template + HTMX + Tailwind), view models
 internal/devserver  keel dev UI
-internal/cloudserver Keel Cloud (orgs, auth, repos, webhooks)
+internal/cloudserver Keel Cloud (orgs, auth, repos, webhooks, AI insights)
+internal/llm        OpenAI-compatible chat client (models, adaptive requests)
+internal/insight    failed-run context trimming and prompts
 internal/store      sqlc queries + golang-migrate migrations (SQLite & PostgreSQL)
 internal/agentskills agent skill directories + installer behind `keel skills`
 internal/selfupdate  release lookup, background update check, `keel update`

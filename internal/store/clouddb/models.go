@@ -27,6 +27,16 @@ type Org struct {
 	CreatedAt time.Time
 }
 
+type OrgAiSetting struct {
+	OrgID      uuid.UUID
+	BaseUrl    string
+	ApiKeyEnc  []byte
+	Model      string
+	VerifiedAt *time.Time
+	UpdatedBy  uuid.NullUUID
+	UpdatedAt  time.Time
+}
+
 type OrgInvite struct {
 	ID           uuid.UUID
 	OrgID        uuid.UUID
@@ -97,6 +107,14 @@ type RunInput struct {
 	IsSecret   bool
 	DeployTime bool
 	Source     string
+}
+
+type RunInsight struct {
+	RunID     uuid.UUID
+	Model     string
+	Content   string
+	CreatedBy uuid.NullUUID
+	CreatedAt time.Time
 }
 
 type RunLog struct {

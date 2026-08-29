@@ -427,6 +427,15 @@ func (q *Queries) DeleteOrg(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteOrgAI = `-- name: DeleteOrgAI :exec
+DELETE FROM org_ai_settings WHERE org_id = $1
+`
+
+func (q *Queries) DeleteOrgAI(ctx context.Context, orgID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteOrgAI, orgID)
+	return err
+}
+
 const deleteOrgMember = `-- name: DeleteOrgMember :exec
 DELETE FROM org_members WHERE org_id = $1 AND user_id = $2
 `
@@ -553,6 +562,27 @@ func (q *Queries) GetOrg(ctx context.Context, id uuid.UUID) (*Org, error) {
 		&i.Personal,
 		&i.CreatedBy,
 		&i.CreatedAt,
+	)
+	return &i, err
+}
+
+const getOrgAI = `-- name: GetOrgAI :one
+
+SELECT org_id, base_url, api_key_enc, model, verified_at, updated_by, updated_at FROM org_ai_settings WHERE org_id = $1
+`
+
+// AI settings and insights ---------------------------------------------------
+func (q *Queries) GetOrgAI(ctx context.Context, orgID uuid.UUID) (*OrgAiSetting, error) {
+	row := q.db.QueryRow(ctx, getOrgAI, orgID)
+	var i OrgAiSetting
+	err := row.Scan(
+		&i.OrgID,
+		&i.BaseUrl,
+		&i.ApiKeyEnc,
+		&i.Model,
+		&i.VerifiedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
 	)
 	return &i, err
 }
@@ -718,6 +748,23 @@ func (q *Queries) GetRun(ctx context.Context, id uuid.UUID) (*Run, error) {
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+	)
+	return &i, err
+}
+
+const getRunInsight = `-- name: GetRunInsight :one
+SELECT run_id, model, content, created_by, created_at FROM run_insights WHERE run_id = $1
+`
+
+func (q *Queries) GetRunInsight(ctx context.Context, runID uuid.UUID) (*RunInsight, error) {
+	row := q.db.QueryRow(ctx, getRunInsight, runID)
+	var i RunInsight
+	err := row.Scan(
+		&i.RunID,
+		&i.Model,
+		&i.Content,
+		&i.CreatedBy,
+		&i.CreatedAt,
 	)
 	return &i, err
 }
@@ -1962,6 +2009,57 @@ type UpsertGithubInstallationParams struct {
 // GitHub installations -------------------------------------------------------
 func (q *Queries) UpsertGithubInstallation(ctx context.Context, arg UpsertGithubInstallationParams) error {
 	_, err := q.db.Exec(ctx, upsertGithubInstallation, arg.InstallationID, arg.AccountLogin, arg.AccountType)
+	return err
+}
+
+const upsertOrgAI = `-- name: UpsertOrgAI :exec
+INSERT INTO org_ai_settings (org_id, base_url, api_key_enc, model, verified_at, updated_by)
+VALUES ($1, $2, $3, $4, now(), $5)
+ON CONFLICT (org_id) DO UPDATE SET
+    base_url = excluded.base_url, api_key_enc = excluded.api_key_enc, model = excluded.model,
+    verified_at = now(), updated_by = excluded.updated_by, updated_at = now()
+`
+
+type UpsertOrgAIParams struct {
+	OrgID     uuid.UUID
+	BaseUrl   string
+	ApiKeyEnc []byte
+	Model     string
+	UpdatedBy uuid.NullUUID
+}
+
+func (q *Queries) UpsertOrgAI(ctx context.Context, arg UpsertOrgAIParams) error {
+	_, err := q.db.Exec(ctx, upsertOrgAI,
+		arg.OrgID,
+		arg.BaseUrl,
+		arg.ApiKeyEnc,
+		arg.Model,
+		arg.UpdatedBy,
+	)
+	return err
+}
+
+const upsertRunInsight = `-- name: UpsertRunInsight :exec
+INSERT INTO run_insights (run_id, model, content, created_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (run_id) DO UPDATE SET
+    model = excluded.model, content = excluded.content, created_by = excluded.created_by, created_at = now()
+`
+
+type UpsertRunInsightParams struct {
+	RunID     uuid.UUID
+	Model     string
+	Content   string
+	CreatedBy uuid.NullUUID
+}
+
+func (q *Queries) UpsertRunInsight(ctx context.Context, arg UpsertRunInsightParams) error {
+	_, err := q.db.Exec(ctx, upsertRunInsight,
+		arg.RunID,
+		arg.Model,
+		arg.Content,
+		arg.CreatedBy,
+	)
 	return err
 }
 

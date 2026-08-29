@@ -1,0 +1,94 @@
+---
+title: "AI insights"
+description: "Explain a failed run in plain language with any OpenAI-compatible model: what happened, the likely cause, what to do next, and the technical detail for the engineer."
+icon: "wand-magic-sparkles"
+---
+
+The people who press Deploy are often not the people who can read a
+Terraform stack trace. When a run fails, **AI insights** turn the log,
+the deployment's steps, and the run's inputs into an explanation written
+for the operator, with a technical section for the engineer — one button
+on the run page.
+
+## Set up a model
+
+Owners and admins configure it once per organization on the **AI** page:
+
+<Steps>
+  <Step title="Provider">
+    Enter the **base URL** of any OpenAI-compatible API and your **API
+    key**. Presets fill in the URL for OpenAI, Anthropic, Google Gemini,
+    OpenRouter, Groq, Mistral, and a local Ollama; self-hosted gateways
+    such as LiteLLM or vLLM work the same way. Press **Load models**.
+  </Step>
+  <Step title="Model">
+    Pick a model from the list Keel fetched from the provider — models
+    that cannot chat (embeddings, audio, image) are hidden — or type a
+    model id when the provider does not list its models. A small, fast
+    model is plenty.
+  </Step>
+  <Step title="Test and save">
+    **Test the model** sends one tiny request and expects the reply `OK`.
+    Saving repeats the same check on the server, so only a configuration
+    that actually works is ever stored. The key is encrypted at rest and
+    never displayed again.
+  </Step>
+</Steps>
+
+**Turn off** deletes the configuration and the key. Changing the URL or
+the model requires a new test before saving.
+
+## Use it on a failed run
+
+A failed run's page shows an **AI insight** card. Any member of the
+organization can press **Explain this failure**; the answer is stored with
+the run, shown to everyone who opens it, and can be regenerated. It has
+four sections:
+
+1. **What happened** — two or three plain sentences naming the step that
+   failed and what it was trying to do.
+2. **Likely cause** — the most probable root cause with the evidence quoted
+   from the log, or an honest "the log does not show why".
+3. **What to do next** — concrete actions for the operator: which value to
+   check on the target's form, what to ask the engineer or the cloud
+   account owner for, whether re-running is safe.
+4. **For the engineer** — the failing command, exit code, exact error, and
+   what to change in the deployment.
+
+### Automatically, in failure emails
+
+Recipients of [email notifications](/cloud/notifications) can opt in to
+receive the insight inside *Deployment failed* emails. Keel then generates
+it as soon as the run fails — no button needed — stores it with the run
+(the run page marks it *generated for the failure email*), and embeds it
+in the email. Anyone can still regenerate it from the run page.
+
+## What the model receives
+
+- The run's metadata: deployment, target, trigger, who started it, the
+  failed step, exit code, the error Keel recorded, duration.
+- The deployment definition from `keel.yaml`: the environment Dockerfile
+  path and each step's name, status, and script (long scripts are cut to
+  1,500 characters).
+- The run's **inputs** with their labels, types, and descriptions.
+  **Secret values are never sent** — the model sees `<set, hidden>`.
+- The **log**, trimmed to fit: the first lines (clone and image build
+  start), then everything from the failed step's first line on. When that
+  is still too long, the beginning and the end of the failing segment are
+  kept and the middle is marked as omitted; long lines are shortened and
+  consecutive duplicates collapsed. The whole prompt stays under roughly
+  16,000 tokens so it fits any current model.
+
+Nothing is sent to the provider until someone presses the button — or,
+for recipients who opted in, until a run fails — and only to the provider
+you configured.
+
+## Provider differences
+
+Keel adapts to the quirks of OpenAI-compatible endpoints: models that
+reject `max_tokens` in favour of `max_completion_tokens` (or neither) are
+retried with the right parameter, replies that arrive as content parts
+are joined, and `<think>` reasoning blocks emitted by some open models are
+stripped. Providers that need a non-standard authentication header (Azure
+OpenAI's `api-key`) are not supported directly; put a gateway such as
+LiteLLM in front of them.

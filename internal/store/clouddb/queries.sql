@@ -311,3 +311,27 @@ SELECT * FROM run_inputs WHERE run_id = $1 ORDER BY idx;
 SELECT * FROM run_inputs
 WHERE run_id = ANY($1::uuid[]) AND deploy_time = true AND is_secret = false
 ORDER BY run_id, idx;
+
+-- AI settings and insights ---------------------------------------------------
+
+-- name: GetOrgAI :one
+SELECT * FROM org_ai_settings WHERE org_id = $1;
+
+-- name: UpsertOrgAI :exec
+INSERT INTO org_ai_settings (org_id, base_url, api_key_enc, model, verified_at, updated_by)
+VALUES ($1, $2, $3, $4, now(), $5)
+ON CONFLICT (org_id) DO UPDATE SET
+    base_url = excluded.base_url, api_key_enc = excluded.api_key_enc, model = excluded.model,
+    verified_at = now(), updated_by = excluded.updated_by, updated_at = now();
+
+-- name: DeleteOrgAI :exec
+DELETE FROM org_ai_settings WHERE org_id = $1;
+
+-- name: UpsertRunInsight :exec
+INSERT INTO run_insights (run_id, model, content, created_by)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (run_id) DO UPDATE SET
+    model = excluded.model, content = excluded.content, created_by = excluded.created_by, created_at = now();
+
+-- name: GetRunInsight :one
+SELECT * FROM run_insights WHERE run_id = $1;

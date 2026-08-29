@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http/httptest"
 	"reflect"
 	"strings"
@@ -181,6 +182,8 @@ func TestRenderAllPages(t *testing.T) {
 		"run.html": PageRun{
 			Base: sampleBase(), Run: sampleRun(true),
 			Steps:    []StepVM{{0, "Authenticate", "succeeded"}, {1, "Deploy", "running"}},
+			Inputs:   BuildRunInputsVM(sampleInputs()),
+			Insight:  &InsightCardVM{URL: "/runs/x/insight", CSRF: "csrftoken", Insight: &InsightVM{Content: template.HTML("<h2>What happened</h2>"), Model: "gpt-4o-mini", CreatedAt: now, CreatedBy: "Pete"}},
 			Outputs:  outputs,
 			LogLines: []LogLineVM{{1, "=> Building environment image"}, {2, "done"}},
 			LastSeq:  2, EventsURL: "/runs/x/events", CanCancel: true, Live: true, BackURL: "/x",
@@ -238,7 +241,13 @@ func TestRenderAllPages(t *testing.T) {
 			Invites: []InviteVM{{ID: "i1", Email: "new@example.com", Role: "member", ExpiresAt: time.Now().Add(24 * time.Hour)}},
 		},
 		"cloud/org_settings.html": PageOrgSettings{Base: cloudBase(), OrgName: "Acme", Personal: false, IsOwner: true},
-		"cloud/account.html":      PageAccount{Base: cloudBase(), Name: "Pete George", Email: "pete@example.com", Errors: map[string]string{}},
+		"cloud/ai.html": PageAI{
+			Base: cloudBase(), URLBase: "/orgs/pete", Configured: true, BaseURL: "https://api.openai.com/v1", Model: "gpt-4o-mini", HasKey: true, VerifiedAt: &now,
+			Presets:     []AIPresetVM{{Name: "OpenAI", BaseURL: "https://api.openai.com/v1"}},
+			ModelPicker: AIModelsVM{Models: []string{"gpt-4o-mini"}, Current: "gpt-4o-mini", Hidden: 3},
+			TestResult:  AITestVM{OK: true, Model: "gpt-4o-mini", Reply: "OK"}, SaveEnabled: true,
+		},
+		"cloud/account.html": PageAccount{Base: cloudBase(), Name: "Pete George", Email: "pete@example.com", Errors: map[string]string{}},
 	}
 
 	if len(pages) != len(r.pages) {
@@ -263,6 +272,58 @@ func TestRenderAllPages(t *testing.T) {
 				t.Fatalf("truncated output:\n%.500s", body)
 			}
 		})
+	}
+}
+
+func sampleInputs() []RunInputVM {
+	return []RunInputVM{
+		{Name: "ACTION", Label: "Action", DeployTime: true, Source: InputDeploy, Value: "destroy"},
+		{Name: "API_KEY", Label: "API Key", Secret: true, Source: InputSaved},
+		{Name: "REPLICAS", Label: "Replicas", Source: InputUnset},
+		{Name: "CONFIRM", Label: "Confirm", DeployTime: true, Source: InputInactive},
+	}
+}
+
+// TestRunInputsAndInsightRender checks what the run page says about each
+// kind of input and about a stored insight.
+func TestRunInputsAndInsightRender(t *testing.T) {
+	r, err := NewRenderer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	page := PageRun{
+		Base: cloudBase(), Run: sampleRun(false), Inputs: BuildRunInputsVM(sampleInputs()),
+		Insight: &InsightCardVM{URL: "/x/insight", CSRF: "x", Insight: &InsightVM{Content: template.HTML("<h2>What happened</h2>"), Model: "m", CreatedAt: now, Auto: true}},
+	}
+	rec := httptest.NewRecorder()
+	r.Render(rec, 200, "run.html", page)
+	body := rec.Body.String()
+	for _, want := range []string{"Chosen when the deploy started", ">destroy<", "••••••••", "not set", "its condition did not hold", "AI insight", "What happened", "Regenerate", "generated for the failure email"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("run page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Explain this failure") {
+		t.Error("stored insight should offer Regenerate, not Explain")
+	}
+
+	table := RunsTableVM{ShowTarget: true, Runs: []RunVM{{ID: "1", Deployment: "prod", TargetName: "a", Status: "succeeded", CreatedAt: now, Inputs: []RunInputChip{{Name: "ACTION", Value: "plan"}}}}}
+	rec = httptest.NewRecorder()
+	r.RenderFragment(rec, "runs.html", "runs_table", table)
+	if !strings.Contains(rec.Body.String(), "ACTION=") {
+		t.Error("runs table missing input chips")
+	}
+
+	rec = httptest.NewRecorder()
+	r.RenderFragment(rec, "cloud/ai.html", "ai_test", AITestVM{OK: true, Model: "m", Reply: "OK"})
+	if body := rec.Body.String(); !strings.Contains(body, "hx-swap-oob") || strings.Contains(body, "disabled") {
+		t.Errorf("ai_test fragment should enable the save button out of band:\n%s", body)
+	}
+	rec = httptest.NewRecorder()
+	r.RenderFragment(rec, "cloud/ai.html", "ai_models", AIModelsVM{Models: []string{"a", "b"}, Current: "b", Hidden: 1})
+	if body := rec.Body.String(); !strings.Contains(body, `<option value="b" selected>`) || !strings.Contains(body, "1 that cannot chat") {
+		t.Errorf("ai_models fragment wrong:\n%s", body)
 	}
 }
 
