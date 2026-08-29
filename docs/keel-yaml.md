@@ -201,7 +201,7 @@ options:
 #### Secrets
 
 `secret: true` values are stored encrypted (AES-256-GCM), rendered as
-password fields (leave blank to keep the saved value), never echoed back
+masked fields — multi-line ones too — that show a *saved — leave blank to keep* placeholder once a value exists, never echoed back
 into forms, and masked as `•••` wherever they appear in run logs. Secrets
 cannot declare defaults, and boolean/select variables cannot be secret.
 

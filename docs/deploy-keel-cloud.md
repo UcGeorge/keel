@@ -139,8 +139,14 @@ touching anything.
   secrets. The backup and state buckets remain; delete them manually if
   you truly want nothing left.
 - **Multiple environments:** each Keel target keeps its own Terraform
-  state (`keel-cloud/<target>` prefix), so a `staging` target with its own
-  project/domain coexists cleanly with `production`.
+  state (`keel-cloud/<key>` prefix — the target's stable ID, so renames are
+  safe; state created under a target name by earlier versions is found
+  automatically), so a `staging` target with its own project/domain
+  coexists cleanly with `production`.
+- **Adopting existing state:** when the run finds a Keel Cloud in the
+  project but no state for this target, it refuses to build a second one
+  and lists the `keel-cloud/…` keys it found. Set `STATE_KEY` (*Terraform
+  state key*, under *Sizing & retention*) to the right one.
 
 ## Least-privilege deployer (optional)
 

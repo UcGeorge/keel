@@ -25,8 +25,10 @@ operators — can run through a clean web UI.
   environment, a region. Each target keeps its own variable values
   (encrypted at rest) and its own run history.
 - **Runs** execute the steps inside the environment container with the
-  repository mounted and every variable exported, with live logs, per-step
-  status, and cancellation. Secrets are masked in the logs.
+  repository mounted and every variable exported (plus `KEEL_DEPLOYMENT`,
+  `KEEL_TARGET`, `KEEL_RUN_ID`, and `KEEL_TARGET_ID` — stable across target
+  renames, for keying state), with live logs, per-step status, and
+  cancellation. Secrets are masked in the logs.
 - **Outputs** are environment variables captured when a run succeeds — a
   service URL, an image reference, a rotated key. Declare them under
   `outputs:`, `export` them from any step, and they appear on the run page

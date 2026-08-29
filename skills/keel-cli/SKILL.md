@@ -63,7 +63,9 @@ Values for undeclared variables are dropped, so one var file can serve
 several deployments. The merged set is validated exactly as the UI
 validates it before anything runs; missing/invalid values are listed and
 the command exits 1. Deploy-time variables are passed per run with
-`--var`. Without `--target`, `KEEL_TARGET` inside the run is `cli`.
+`--var`. Without `--target`, `KEEL_TARGET` inside the run is `cli` and
+`KEEL_TARGET_ID` is empty (the rename-safe `${KEEL_TARGET_ID:-$KEEL_TARGET}`
+pattern therefore keys state under `cli`).
 Ctrl+C cancels the run and removes the container.
 
 ```console
@@ -169,5 +171,9 @@ environment variables): **Notifications** (SMTP server + recipients
 subscribed to run/repository/target/member events —
 https://keel-cloud.mintlify.site/cloud/notifications) and **AI insights**
 (any OpenAI-compatible base URL + key + model; explains failed runs —
-https://keel-cloud.mintlify.site/cloud/ai-insights). Every run records the
-inputs it started with (secrets as "set" only) on its run page.
+https://keel-cloud.mintlify.site/cloud/ai-insights). An insight is
+generated once per failed run and stored: the failure email and the run
+page share it. Every run records the inputs it started with (secrets as
+"set" only) on its run page. Renaming a target (its settings form asks for
+confirmation) keeps its values, runs, and `KEEL_TARGET_ID`; only
+`KEEL_TARGET` and the URL change.

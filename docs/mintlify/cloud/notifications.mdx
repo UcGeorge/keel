@@ -57,10 +57,12 @@ Each recipient can also tick **Include the AI insight in *Deployment
 failed* emails**. When a run fails, Keel then generates the explanation
 automatically — using the model configured under
 [AI insights](/cloud/ai-insights) — stores it with the run, and embeds it
-in that recipient's email: what happened, the likely cause, what to do
-next, and the technical detail. Recipients without the option get their
-email immediately; the ones with it get theirs once the model has
-answered, usually within a minute. If AI insights are not set up, or the
+in the email: what happened, the likely cause, what to do next, and the
+technical detail. It is generated once per run, not once per recipient:
+everyone who opted in gets the same insight in one email, and the run page
+shows the same text. Recipients without the option get their email
+immediately; the ones with it get theirs once the model has answered,
+usually within a minute. If AI insights are not set up, or the
 model cannot be reached, the email says so in place of the insight.
 
 ## What an email contains

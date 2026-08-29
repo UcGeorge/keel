@@ -68,8 +68,8 @@ Names: `[A-Z][A-Z0-9_]*`, unique, not starting with `KEEL_`.
 |---|---|---|---|
 | `label` | string | the name | form label and manifest heading |
 | `type` | string | `text` | `text`, `multiline`, `number`, `email`, `url`, `boolean`, `select` |
-| `secret` | boolean | `false` | encrypted at rest, password field, masked in logs; no `default`; not for `boolean`/`select` |
-| `required` | boolean | `true` | inactive variables are never required |
+| `secret` | boolean | `false` | encrypted at rest, masked field (multi-line too), *saved — leave blank to keep* once a value exists, never echoed back, masked in logs; no `default`; not for `boolean`/`select` |
+| `required` | boolean | `true` | a required variable with no `default` is marked with a red asterisk in the form (groups show an *N required* count); one with a `default` is satisfied by it; inactive variables are never required |
 | `description` | string (Markdown) | — | under the field and in the manifest |
 | `placeholder` | string | — | form placeholder (non-secret fields fall back to the default) |
 | `default` | string | — | pre-filled and used when blank; must pass validation; write numbers/booleans as strings |
@@ -101,7 +101,7 @@ Every value is stored and exported as a string.
 | Key | Applies to | Notes |
 |---|---|---|
 | `pattern` | all except `boolean`, `select` | RE2, anchored to the whole value |
-| `message` | with `pattern` | error text and the format hint under the field |
+| `message` | with `pattern` | error text and the format hint under the field (constraints are shown before typing; on save, valid fields persist and invalid ones are re-shown with the submitted text) |
 | `min`, `max` | `number` | inclusive; `max ≥ min` |
 | `min_length`, `max_length` | `text`, `multiline`, `email`, `url` | bytes; `min_length ≥ 0`, `max_length ≥ min_length` |
 

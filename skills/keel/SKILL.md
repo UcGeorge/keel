@@ -162,6 +162,12 @@ deployments:
 - Every **active** variable is exported by name. Inactive (`when` false)
   and optional-without-value variables are not exported at all — read them
   as `${NAME:-}`. Unset booleans resolve to `false`.
+- `KEEL_TARGET` is the target's **name — a label that can be renamed**;
+  `KEEL_TARGET_ID` is its stable identity (empty for `keel deploy` without
+  `--target`). Anything a later run must find again — a Terraform state
+  prefix, a stack or workspace name — is keyed by
+  `${KEEL_TARGET_ID:-$KEEL_TARGET}`, never by the name alone. The name is
+  fine for display, tags, and resource labels.
 - Secret values are replaced with `•••` in logs (exact substrings only).
   Never `echo` credentials. Keep single log lines under 1 MB.
 - Outputs are read from the environment after the last step succeeds
@@ -179,6 +185,7 @@ deployments:
 | Dangerous action | deploy-time `select` for the action + a conditional confirmation with `validation: {pattern: destroy}` |
 | Many variables | `groups:` on the deployment, `group`/`row`/`flex` on variables |
 | Something people ask for after a deploy (URL, IP, image) | `export NAME=…` in a step and declare it under `outputs:` |
+| State a later run must find again (Terraform state, stack name) | key it by `${KEEL_TARGET_ID:-$KEEL_TARGET}` — see the rename-safe pattern in `references/patterns.md` |
 
 Write `label`, `description`, `manifest.why`, and `manifest.how` for the
 person who will fill in the form — usually not the author. Use real
@@ -186,6 +193,14 @@ instructions ("Google Cloud console → IAM & Admin → Service accounts →
 Keys → Add key → JSON"), Markdown is supported. Add a `manifest` block to
 every value a client must supply and leave it off internal switches; the
 block's presence puts the variable in the default manifest selection.
+
+What the form does with these declarations: a required variable with no
+`default` is marked with a red asterisk (one with a default is satisfied
+by it, so no asterisk); `validation` constraints and `message` are shown
+as a hint *before* the person types; saving persists every valid field and
+re-shows invalid ones with the submitted text, so only those need fixing;
+secret fields — multi-line ones too — are masked and show a *saved — leave
+blank to keep* placeholder once a value exists.
 
 ## Checklist before you finish
 
@@ -198,5 +213,7 @@ block's presence puts the variable in the default manifest selection.
 - [ ] Every operator-supplied value has `label`, `manifest.why`,
       `manifest.how`, and a `validation` hint where the format matters.
 - [ ] Optional/inactive variables are read as `${NAME:-}` in steps.
+- [ ] Persistent state (Terraform prefix, stack/workspace name) is keyed by
+      `${KEEL_TARGET_ID:-$KEEL_TARGET}`, so renaming a target is safe.
 - [ ] `keel.yaml` and `deploy/` are committed; `.keel/dev.db` is not
       (Keel writes `.keel/.gitignore` for you).

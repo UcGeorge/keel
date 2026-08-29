@@ -35,7 +35,12 @@ https://keel-cloud.mintlify.site/reference/run-environment.
 - **No Docker daemon inside.** A step cannot `docker build` or
   `docker push`. Use the cloud's remote builder (Cloud Build, CodeBuild,
   ACR Tasks, Kaniko in a cluster), or build in CI and pass the tag to the
-  deployment as a deploy-time variable.
+  deployment as a deploy-time variable. Remote builders may run the
+  *legacy* Docker builder: a Dockerfile that uses `FROM
+  --platform=$BUILDPLATFORM`, `TARGETOS`/`TARGETARCH`, `RUN --mount`, or
+  heredocs needs BuildKit — on Cloud Build put `env: [DOCKER_BUILDKIT=1]`
+  on the `gcr.io/cloud-builders/docker` step, or the build fails with
+  `failed to parse platform : "" is an invalid component`.
 - **Disposable.** Nothing outside `/workspace` survives the run; nothing
   inside it is committed anywhere.
 - **Pin versions.** The point of the environment is that the deployment

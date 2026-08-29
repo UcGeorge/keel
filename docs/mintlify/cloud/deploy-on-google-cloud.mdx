@@ -137,8 +137,14 @@ again: build, push, health-checked rollover, typically three minutes.
   final backup is taken; the VM, disks, IP, network, registry, and secrets
   are removed. The backup and state buckets remain.
 - **Multiple environments:** each target keeps its own Terraform state under
-  a `keel-cloud/<target>` prefix, so a `staging` target with its own project
-  coexists with `production`.
+  a `keel-cloud/<key>` prefix, so a `staging` target with its own project
+  coexists with `production`. The key is the target's stable ID, so renaming
+  a target is safe; targets created before ID-keyed state (under the target
+  name) are found automatically.
+- **Adopting existing state:** if the run finds a Keel Cloud in the project
+  but no state for this target, it stops rather than build a second one and
+  lists the `keel-cloud/…` keys it found. Set *Terraform state key* (under
+  *Sizing & retention*) to the right one and deploy again.
 
 ## Least-privilege deployer
 

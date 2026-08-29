@@ -38,6 +38,9 @@ deployments:
       - name: Show environment
         run: |
           echo "Deploying $KEEL_DEPLOYMENT to target $KEEL_TARGET"
+          # KEEL_TARGET is a label that can be renamed; KEEL_TARGET_ID never changes.
+          # Key anything a later run must find again (state, stack names) by the ID.
+          echo "Target ID: ${KEEL_TARGET_ID:-none}"
           echo "Greeting: $GREETING"
       - name: Deploy
         run: |

@@ -59,9 +59,11 @@ four sections:
 
 Recipients of [email notifications](/cloud/notifications) can opt in to
 receive the insight inside *Deployment failed* emails. Keel then generates
-it as soon as the run fails — no button needed — stores it with the run
-(the run page marks it *generated for the failure email*), and embeds it
-in the email. Anyone can still regenerate it from the run page.
+it **once** as soon as the run fails — no button needed — stores it with
+the run (the run page marks it *generated for the failure email*), and
+embeds that one insight in a single email to every opted-in recipient. It
+is never generated per recipient, and the run page shows the same text.
+Anyone can still regenerate it from the run page.
 
 ## What the model receives
 

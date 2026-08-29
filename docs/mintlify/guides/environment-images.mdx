@@ -80,7 +80,12 @@ would otherwise have to install. Everything the steps call must be in it.
   `docker build` or `docker push`. Use the cloud's remote builder (Cloud
   Build, CodeBuild, ACR Tasks, Kaniko in a cluster) or build images in CI
   and have the deployment reference a tag — pass it as a deploy-time
-  variable.
+  variable. Remote builders may default to the legacy Docker builder: a
+  Dockerfile using `FROM --platform=$BUILDPLATFORM`, `TARGETOS`/`TARGETARCH`,
+  `RUN --mount`, or heredocs needs BuildKit. On Cloud Build, add
+  `env: [DOCKER_BUILDKIT=1]` to the `gcr.io/cloud-builders/docker` step;
+  without it the build fails with `failed to parse platform : "" is an
+  invalid component`.
 - **The container is disposable.** Nothing written outside `/workspace`
   survives the run. Nothing written inside `/workspace` is committed
   anywhere; in Keel Cloud the clone is deleted, in Keel Dev it is your
