@@ -111,6 +111,37 @@ conditional variables as `${NAME:-}` — inactive ones are not exported.
 Push-triggered auto-deploys in Keel Cloud use defaults, so a required
 deploy-time variable without a default blocks auto-deploy.
 
+## Persistent state per target (rename-safe)
+
+Anything a run must find again next time — a Terraform state key, a stack
+name, a workspace — should be keyed by `KEEL_TARGET_ID`, not `KEEL_TARGET`.
+Targets can be renamed; the name is a label, the ID never changes. Fall back
+to the name only for `keel deploy` without `--target`, where the ID is empty.
+
+```yaml
+steps:
+  - name: Provision
+    run: |
+      key="${KEEL_TARGET_ID:-$KEEL_TARGET}"
+      terraform init -input=false -reconfigure \
+        -backend-config="bucket=$STATE_BUCKET" \
+        -backend-config="prefix=myapp/$key"
+      terraform apply -input=false -auto-approve
+```
+
+When a stack's resources have fixed names (one per cloud project), also guard
+against an empty state next to an existing stack — say what was found and
+stop, instead of failing on a wall of "already exists" errors:
+
+```sh
+if [ -z "$(terraform state list 2>/dev/null | grep -v '^data\.')" ] \
+   && gcloud compute networks describe myapp >/dev/null 2>&1; then
+  echo "myapp already exists in $GCP_PROJECT but this target has no state for it." >&2
+  gcloud storage ls "gs://$STATE_BUCKET/myapp/" >&2
+  exit 1
+fi
+```
+
 ## Large forms: groups, rows, flex
 
 ```yaml

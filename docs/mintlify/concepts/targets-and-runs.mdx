@@ -49,6 +49,15 @@ Saving the form persists every valid field immediately and reports invalid
 ones inline with the submitted text kept in place, so a typo in one field
 never costs you the other forty-nine.
 
+### Renaming a target
+
+A target's name is a label; its identity is a stable ID. Renaming changes what
+runs see as `KEEL_TARGET` (and the target's URL), so the settings form asks
+for confirmation. It does **not** change `KEEL_TARGET_ID`, and it cannot move
+state that lives outside Keel — so deployments should key anything persistent
+(a Terraform state key, a stack name) by `KEEL_TARGET_ID`, which survives the
+rename. See the [run environment](/reference/run-environment).
+
 ## Runs
 
 A **run** is one execution of a deployment against a target. Runs are created

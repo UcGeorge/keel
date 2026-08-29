@@ -36,10 +36,11 @@ deployments:
       > You can start on sslip.io and switch to a real domain any time by
       > filling the variable and deploying again.
 
-      One Keel Cloud per GCP project. The Terraform state is keyed by the
-      target name (or *Terraform state key*, under *Sizing & retention*) — if
-      you rename a target, set that key to the old name so the run keeps
-      driving the same stack instead of trying to build a second one.
+      One Keel Cloud per GCP project. Terraform state is keyed by the target's
+      stable ID, so renaming a target is safe. If the run ever finds an
+      existing Keel Cloud but no state for this target, it stops and lists
+      the state keys it found — set *Terraform state key* (under *Sizing &
+      retention*) to the right one rather than building a second stack.
 
     environment:
       dockerfile: deploy/Dockerfile
@@ -221,10 +222,11 @@ deployments:
           pattern: "[a-z0-9]([a-z0-9._-]*[a-z0-9])?"
           message: Lowercase letters, digits, dots, hyphens, underscores.
         description: |
-          Which state this target drives, as `keel-cloud/<key>` in the state bucket.
-          Empty means the **target name**. Set it to the old name after renaming a
-          target — the run refuses to build a second Keel Cloud on top of an existing
-          one, and tells you the keys it found.
+          Which Terraform state this target drives, as `keel-cloud/<key>` in the state
+          bucket. Leave empty: the run keys state by the target's stable ID (so renaming
+          the target is safe), and still finds state created under the target's name by
+          older versions. Set it only to adopt a specific existing state — e.g. after a
+          rename that the run refused because the stack already exists.
 
       # --- Asked in the modal every time Deploy is pressed -------------------
 
@@ -291,7 +293,23 @@ deployments:
 
       - name: Provision infrastructure (Terraform)
         run: |
-          export STATE_KEY="${STATE_KEY:-$KEEL_TARGET}"
+          # Which state this target drives. Targets can be renamed, so the key is
+          # the target's stable ID — unless an explicit STATE_KEY is set, or the
+          # stack predates ID-keyed state and lives under the target's name.
+          state_exists() { gcloud storage ls "gs://$STATE_BUCKET/keel-cloud/$1/default.tfstate" >/dev/null 2>&1; }
+          if [ -n "${STATE_KEY:-}" ]; then
+            echo "State key: keel-cloud/$STATE_KEY (set explicitly)"
+          elif [ -n "${KEEL_TARGET_ID:-}" ] && state_exists "$KEEL_TARGET_ID"; then
+            STATE_KEY="$KEEL_TARGET_ID"
+            echo "State key: keel-cloud/$STATE_KEY (target ID)"
+          elif state_exists "$KEEL_TARGET"; then
+            STATE_KEY="$KEEL_TARGET"
+            echo "State key: keel-cloud/$STATE_KEY (target name — created before ID-keyed state)"
+          else
+            STATE_KEY="${KEEL_TARGET_ID:-$KEEL_TARGET}"
+            echo "State key: keel-cloud/$STATE_KEY (new)"
+          fi
+          export STATE_KEY
           export TF_DATA_DIR="/tmp/terraform-$STATE_KEY"
           export TF_IN_AUTOMATION=1
           export TF_VAR_project="$GCP_PROJECT"

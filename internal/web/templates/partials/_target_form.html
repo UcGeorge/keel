@@ -5,7 +5,9 @@
 */}}
 {{define "target_form"}}
 {{$f := .Form}}
-<form method="post" action="{{$f.Action}}" class="space-y-4">
+<form method="post" action="{{$f.Action}}" class="space-y-4"
+  {{if $f.Existing}}data-original-name="{{$f.Name}}"
+  onsubmit="return this.elements.namedItem('name').value === this.dataset.originalName || confirm('Rename this target?\n\nEvery future run will see KEEL_TARGET=' + this.elements.namedItem('name').value + '. Anything keyed by the old name (a Terraform state key, a stack name) will not be found under the new one — state keyed by KEEL_TARGET_ID is unaffected.')"{{end}}>
   {{template "csrf_field" .CSRF}}
   <div>
     <label for="target-name" class="block text-sm font-medium text-slate-900">Target name</label>
