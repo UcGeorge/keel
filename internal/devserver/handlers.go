@@ -220,7 +220,7 @@ func (s *Server) renderTarget(w http.ResponseWriter, r *http.Request, d *config.
 		ManifestURL:  tURL + "/manifest",
 		EditForm: &web.TargetFormVM{
 			Action: tURL + "/update", Submit: "Save settings",
-			Name: t.Name, Description: t.Description,
+			Name: t.Name, Description: t.Description, Existing: true,
 		},
 		Problems: problems,
 		BackURL:  depURL(d.Name),

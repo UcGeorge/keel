@@ -224,10 +224,15 @@ func (s *Server) startRun(run *clouddb.Run, repo *clouddb.Repo, d *config.Deploy
 			_ = s.Q.SetRunCommit(bg, clouddb.SetRunCommitParams{ID: run.ID, CommitSha: sha})
 		}
 
+		targetID := ""
+		if run.TargetID.Valid {
+			targetID = run.TargetID.UUID.String()
+		}
 		spec := engine.Spec{
 			RunID:        runID,
 			Deployment:   d.Name,
 			Target:       targetName,
+			TargetID:     targetID,
 			RepoDir:      workdir,
 			Dockerfile:   d.Environment.Dockerfile,
 			Context:      d.Environment.Context,

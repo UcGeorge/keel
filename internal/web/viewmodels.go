@@ -167,6 +167,9 @@ type TargetFormVM struct {
 	ShowAuto    bool
 	NameError   string
 	Submit      string
+	// Existing marks the edit form of a target that already exists, where a
+	// rename deserves a warning: runs see the new name as KEEL_TARGET.
+	Existing bool
 }
 
 // RunVM is a run as rendered in tables and on the run page.

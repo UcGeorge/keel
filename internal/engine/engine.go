@@ -65,6 +65,11 @@ type Spec struct {
 	Deployment string
 	// Target is the deployment target name (metadata only).
 	Target string
+	// TargetID is the target's stable identifier (metadata only). Targets
+	// can be renamed, so steps that must key persistent state — a Terraform
+	// state key, a stack name — read this rather than Target. Empty when
+	// there is no stored target (keel deploy without --target).
+	TargetID string
 	// RepoDir is the absolute path of the repository checkout. It is
 	// mounted read-write at /workspace and used as the build context root.
 	RepoDir string
@@ -177,6 +182,7 @@ func (r *Runner) Run(ctx context.Context, spec Spec, sink Sink) (Result, error) 
 		"--workdir", "/workspace",
 		"--env", "KEEL_DEPLOYMENT=" + spec.Deployment,
 		"--env", "KEEL_TARGET=" + spec.Target,
+		"--env", "KEEL_TARGET_ID=" + spec.TargetID,
 		"--env", "KEEL_RUN_ID=" + spec.RunID,
 	}
 	env := os.Environ()

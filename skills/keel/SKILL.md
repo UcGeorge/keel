@@ -123,7 +123,7 @@ deployments:
   the repository (no `..`, no absolute paths). Same for `context`.
 - At least one step; every step needs a non-empty `name` and `run`.
 - Variable and output names match `[A-Z][A-Z0-9_]*`, are unique, and may
-  not start with `KEEL_` (reserved for `KEEL_DEPLOYMENT`, `KEEL_TARGET`,
+  not start with `KEEL_` (reserved for `KEEL_DEPLOYMENT`, `KEEL_TARGET`, `KEEL_TARGET_ID`,
   `KEEL_RUN_ID`).
 - `type` is one of `text` (default), `multiline`, `number`, `email`, `url`,
   `boolean`, `select`.

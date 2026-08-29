@@ -47,7 +47,10 @@ environment container. The repository checkout is mounted read-write at
 run; later steps are skipped. Each step runs in its own subshell, so `cd`
 and shell options don't leak between steps.
 
-Every run also receives `KEEL_DEPLOYMENT`, `KEEL_TARGET`, and `KEEL_RUN_ID`.
+Every run also receives `KEEL_DEPLOYMENT`, `KEEL_TARGET`, `KEEL_TARGET_ID`, and
+`KEEL_RUN_ID`. Targets can be renamed, so anything that must survive a rename —
+a Terraform state key, a stack name — should be keyed by `KEEL_TARGET_ID`
+(stable) rather than `KEEL_TARGET`.
 
 **Authentication is just a step.** For clouds where a "sign in with…"
 button isn't meaningful for automated deploys, declare the credentials as

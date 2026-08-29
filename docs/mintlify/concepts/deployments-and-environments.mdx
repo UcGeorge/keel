@@ -88,7 +88,7 @@ environment container. What a step can rely on:
 
 - The repository is mounted at `/workspace`, which is the working directory.
 - Every active variable is exported as an environment variable, plus
-  `KEEL_DEPLOYMENT`, `KEEL_TARGET`, and `KEEL_RUN_ID`.
+  `KEEL_DEPLOYMENT`, `KEEL_TARGET`, `KEEL_TARGET_ID` (stable across renames), and `KEEL_RUN_ID`.
 - Each step runs in its own subshell, so `cd`, `set -x`, and other shell
   state do not leak into the next step.
 - `export`ed variables *do* carry forward to later steps, and to output

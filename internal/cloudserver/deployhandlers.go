@@ -280,6 +280,7 @@ func (s *Server) renderTarget(w http.ResponseWriter, r *http.Request, rc *repoCt
 			Action: tURL + "/update", Submit: "Save settings",
 			Name: t.Name, Description: t.Description,
 			AutoDeploy: t.AutoDeploy, ShowAuto: rc.Repo.Provider == "github_app",
+			Existing: true,
 		},
 		ShowAuto: rc.Repo.Provider == "github_app",
 		Problems: problems,

@@ -36,6 +36,11 @@ deployments:
       > You can start on sslip.io and switch to a real domain any time by
       > filling the variable and deploying again.
 
+      One Keel Cloud per GCP project. The Terraform state is keyed by the
+      target name (or *Terraform state key*, under *Sizing & retention*) — if
+      you rename a target, set that key to the old name so the run keeps
+      driving the same stack instead of trying to build a second one.
+
     environment:
       dockerfile: deploy/Dockerfile
       context: .
@@ -207,6 +212,20 @@ deployments:
         validation: {min: 1, max: 365}
         description: Nightly database dumps older than this are deleted.
 
+      STATE_KEY:
+        label: Terraform state key
+        required: false
+        group: 3
+        placeholder: defaults to the target name
+        validation:
+          pattern: "[a-z0-9]([a-z0-9._-]*[a-z0-9])?"
+          message: Lowercase letters, digits, dots, hyphens, underscores.
+        description: |
+          Which state this target drives, as `keel-cloud/<key>` in the state bucket.
+          Empty means the **target name**. Set it to the old name after renaming a
+          target — the run refuses to build a second Keel Cloud on top of an existing
+          one, and tells you the keys it found.
+
       # --- Asked in the modal every time Deploy is pressed -------------------
 
       ACTION:
@@ -272,7 +291,8 @@ deployments:
 
       - name: Provision infrastructure (Terraform)
         run: |
-          export TF_DATA_DIR="/tmp/terraform-$KEEL_TARGET"
+          export STATE_KEY="${STATE_KEY:-$KEEL_TARGET}"
+          export TF_DATA_DIR="/tmp/terraform-$STATE_KEY"
           export TF_IN_AUTOMATION=1
           export TF_VAR_project="$GCP_PROJECT"
           export TF_VAR_region="$GCP_REGION"
@@ -288,7 +308,31 @@ deployments:
 
           terraform -chdir=deploy/terraform init -input=false -reconfigure \
             -backend-config="bucket=$STATE_BUCKET" \
-            -backend-config="prefix=keel-cloud/$KEEL_TARGET"
+            -backend-config="prefix=keel-cloud/$STATE_KEY"
+
+          # A Keel Cloud is one per project (its resource names are fixed), so an
+          # empty state next to an existing stack means this target is not the one
+          # that built it — typically the target was renamed, and the state key
+          # followed the name. Stop here rather than fail on twenty 409s.
+          if [ "${ACTION:-deploy}" = deploy ] \
+             && [ -z "$(terraform -chdir=deploy/terraform state list 2>/dev/null | grep -v '^data\.')" ] \
+             && gcloud compute networks describe keel --format='value(name)' >/dev/null 2>&1; then
+            keys=$(gcloud storage ls "gs://$STATE_BUCKET/keel-cloud/" 2>/dev/null \
+              | sed -n 's|^gs://[^/]*/keel-cloud/\([^/]*\)/$|\1|p' | grep -vx "$STATE_KEY" | tr '\n' ' ')
+            cat >&2 <<EOF
+
+          A Keel Cloud already exists in $GCP_PROJECT, but the state for this target
+          (keel-cloud/$STATE_KEY) is empty — so this run would try to create it again.
+
+            Other state keys in gs://$STATE_BUCKET/keel-cloud/: ${keys:-none}
+
+          If this target was renamed, set the "Terraform state key" variable to its
+          old name and deploy again. If you really want a second Keel Cloud, use a
+          different GCP project.
+
+          EOF
+            exit 1
+          fi
 
           case "${ACTION:-deploy}" in
             destroy)

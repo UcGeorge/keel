@@ -159,7 +159,7 @@ whose value contains a secret input's value is treated as secret. Limits:
 | Shell | `/bin/sh`, one assembled script under `set -e`, each step in its own subshell |
 | Working directory | `/workspace` (the repository, mounted read-write) |
 | Source | Keel Dev: your working tree; Keel Cloud: a fresh shallow clone of the connected branch; `keel deploy`: the current directory |
-| Injected variables | `KEEL_DEPLOYMENT`, `KEEL_TARGET` (`cli` for `keel deploy` without `--target`), `KEEL_RUN_ID` |
+| Injected variables | `KEEL_DEPLOYMENT`, `KEEL_TARGET` (`cli` for `keel deploy` without `--target`), `KEEL_TARGET_ID` (stable across renames — key persistent state by this), `KEEL_RUN_ID` |
 | Docker inside | none |
 | Lifetime | container removed when the run ends or is canceled |
 | Logs | streamed line by line; secret values replaced with `•••`; single lines over 1 MB drop that stream for the rest of the run |

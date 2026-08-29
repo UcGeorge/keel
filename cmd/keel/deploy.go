@@ -49,11 +49,13 @@ Values come from, in increasing precedence:
 
 			values := map[string]string{}
 			display := targetName
+			targetID := ""
 			if targetName != "" {
-				saved, err := loadTargetValues(cmd.Context(), dir, d, targetName)
+				saved, id, err := loadTargetValues(cmd.Context(), dir, d, targetName)
 				if err != nil {
 					return err
 				}
+				targetID = id
 				for k, v := range saved {
 					values[k] = v
 				}
@@ -120,6 +122,7 @@ Values come from, in increasing precedence:
 				RunID:        runID,
 				Deployment:   d.Name,
 				Target:       display,
+				TargetID:     targetID,
 				RepoDir:      dir,
 				Dockerfile:   d.Environment.Dockerfile,
 				Context:      d.Environment.Context,
@@ -181,21 +184,22 @@ Values come from, in increasing precedence:
 	return cmd
 }
 
-// loadTargetValues decrypts saved values for a named target from .keel/dev.db.
-func loadTargetValues(ctx context.Context, dir string, d *config.Deployment, targetName string) (map[string]string, error) {
+// loadTargetValues decrypts saved values for a named target from .keel/dev.db
+// and returns the target's stable ID alongside them.
+func loadTargetValues(ctx context.Context, dir string, d *config.Deployment, targetName string) (map[string]string, string, error) {
 	dbPath := filepath.Join(dir, ".keel", "dev.db")
 	if _, err := os.Stat(dbPath); err != nil {
-		return nil, fmt.Errorf("no local Keel state at %s — create the target in `keel dev` first", dbPath)
+		return nil, "", fmt.Errorf("no local Keel state at %s — create the target in `keel dev` first", dbPath)
 	}
 	db, err := devdb.Open(dbPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer db.Close()
 	q := devdb.New(db)
 	t, err := q.GetTargetByName(ctx, devdb.GetTargetByNameParams{Deployment: d.Name, Name: targetName})
 	if err != nil {
-		return nil, fmt.Errorf("no target named %q for deployment %q — create it in `keel dev` first", targetName, d.Name)
+		return nil, "", fmt.Errorf("no target named %q for deployment %q — create it in `keel dev` first", targetName, d.Name)
 	}
 	cfgDir, err := os.UserConfigDir()
 	if err != nil {
@@ -203,11 +207,11 @@ func loadTargetValues(ctx context.Context, dir string, d *config.Deployment, tar
 	}
 	box, err := secretbox.LoadOrCreateKeyFile(filepath.Join(cfgDir, "keel", "dev.key"))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	rows, err := q.ListTargetValues(ctx, t.ID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	values := map[string]string{}
 	for _, row := range rows {
@@ -216,11 +220,11 @@ func loadTargetValues(ctx context.Context, dir string, d *config.Deployment, tar
 		}
 		plain, err := box.OpenString(row.ValueEnc)
 		if err != nil {
-			return nil, fmt.Errorf("decrypt %s: %w", row.VarName, err)
+			return nil, "", fmt.Errorf("decrypt %s: %w", row.VarName, err)
 		}
 		values[row.VarName] = plain
 	}
-	return values, nil
+	return values, t.ID, nil
 }
 
 // parseVarFile reads an env-style file: NAME=value per line, # comments.

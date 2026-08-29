@@ -14,6 +14,7 @@
       class="mt-1.5 block w-full max-w-lg rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
     {{with $f.NameError}}<p class="mt-1.5 text-sm text-red-600">{{.}}</p>{{end}}
     <p class="mt-1 text-xs text-slate-400">Lowercase letters, digits, and hyphens. A target is one concrete place this deployment goes — a client, an environment, a region.</p>
+    {{if $f.Existing}}<p class="mt-1.5 text-xs text-amber-700">Renaming changes <code class="rounded bg-amber-100 px-1 py-0.5">KEEL_TARGET</code> in every future run. Deployments that key state by the target name (a Terraform state key, a stack name) will start from scratch under the new name — key such state by <code class="rounded bg-amber-100 px-1 py-0.5">KEEL_TARGET_ID</code>, which never changes.</p>{{end}}
   </div>
   <div>
     <label for="target-desc" class="block text-sm font-medium text-slate-900">Description <span class="font-normal text-slate-400">(optional)</span></label>

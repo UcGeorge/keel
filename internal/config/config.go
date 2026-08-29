@@ -24,7 +24,8 @@ const DefaultFileName = "keel.yaml"
 const SupportedVersion = 1
 
 // ReservedVarPrefix is reserved for metadata Keel injects into every run
-// (KEEL_DEPLOYMENT, KEEL_TARGET, KEEL_RUN_ID). User variables may not use it.
+// (KEEL_DEPLOYMENT, KEEL_TARGET, KEEL_TARGET_ID, KEEL_RUN_ID). User variables
+// may not use it.
 const ReservedVarPrefix = "KEEL_"
 
 // VarType enumerates the input types a variable can declare. The type drives

@@ -26,6 +26,7 @@ optional, boolean, and inactive variables resolve. In addition:
 |---|---|
 | `KEEL_DEPLOYMENT` | The deployment name |
 | `KEEL_TARGET` | The target name, or `cli` for `keel deploy` without `--target` |
+| `KEEL_TARGET_ID` | The target's stable identifier — survives a rename, so key persistent state (Terraform state, stack names) by this rather than `KEEL_TARGET`; empty for `keel deploy` without `--target` |
 | `KEEL_RUN_ID` | The run's identifier |
 
 User variables may not start with `KEEL_`.

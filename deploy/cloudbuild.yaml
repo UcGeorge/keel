@@ -3,6 +3,12 @@
 # container without a Docker daemon of their own.
 steps:
   - name: gcr.io/cloud-builders/docker
+    # BuildKit, not the legacy builder: the Dockerfile's
+    # `FROM --platform=$BUILDPLATFORM` and the TARGETOS/TARGETARCH build args
+    # are BuildKit features. The legacy builder leaves them empty and fails
+    # with `failed to parse platform : "" is an invalid component`.
+    env:
+      - DOCKER_BUILDKIT=1
     args:
       - build
       - --tag
