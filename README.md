@@ -35,6 +35,10 @@ operators — can run through a clean web UI.
 - **Variable manifests** are generated documents you hand to whoever must
   supply the values — each entry explains what the value is, why it is
   needed, and how to obtain it, exactly as the deployment author wrote it.
+- **Run inputs** are recorded with every run: the deploy-time choices
+  (`ACTION=destroy`, an image tag) and the target's configuration at that
+  moment, so a run stays explainable a week later. Secret inputs are
+  recorded as *set*, never as values.
 
 Keel ships in two forms sharing the same engine and the same UI — with a
 light and a dark theme (the header toggle remembers your choice; the

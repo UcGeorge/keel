@@ -112,3 +112,17 @@ SELECT * FROM run_outputs WHERE run_id = ? ORDER BY name;
 -- name: LatestSucceededRunForTarget :one
 SELECT * FROM runs WHERE target_id = ? AND status = 'succeeded'
 ORDER BY created_at DESC, id DESC LIMIT 1;
+
+-- Run inputs -----------------------------------------------------------------
+
+-- name: InsertRunInput :exec
+INSERT INTO run_inputs (run_id, idx, name, label, value_enc, is_secret, deploy_time, source)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: ListRunInputs :many
+SELECT * FROM run_inputs WHERE run_id = ? ORDER BY idx;
+
+-- name: ListRunDeployInputsForRuns :many
+SELECT * FROM run_inputs
+WHERE run_id IN (sqlc.slice('run_ids')) AND deploy_time = 1 AND is_secret = 0
+ORDER BY run_id, idx;

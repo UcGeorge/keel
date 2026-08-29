@@ -825,6 +825,38 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (*User, erro
 	return &i, err
 }
 
+const insertRunInput = `-- name: InsertRunInput :exec
+
+INSERT INTO run_inputs (run_id, idx, name, label, value_enc, is_secret, deploy_time, source)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type InsertRunInputParams struct {
+	RunID      uuid.UUID
+	Idx        int32
+	Name       string
+	Label      string
+	ValueEnc   []byte
+	IsSecret   bool
+	DeployTime bool
+	Source     string
+}
+
+// Run inputs -----------------------------------------------------------------
+func (q *Queries) InsertRunInput(ctx context.Context, arg InsertRunInputParams) error {
+	_, err := q.db.Exec(ctx, insertRunInput,
+		arg.RunID,
+		arg.Idx,
+		arg.Name,
+		arg.Label,
+		arg.ValueEnc,
+		arg.IsSecret,
+		arg.DeployTime,
+		arg.Source,
+	)
+	return err
+}
+
 const insertRunOutput = `-- name: InsertRunOutput :exec
 INSERT INTO run_outputs (run_id, name, value_enc, is_secret)
 VALUES ($1, $2, $3, $4)
@@ -1167,6 +1199,74 @@ func (q *Queries) ListReposForOrg(ctx context.Context, orgID uuid.UUID) ([]*Repo
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunDeployInputsForRuns = `-- name: ListRunDeployInputsForRuns :many
+SELECT run_id, idx, name, label, value_enc, is_secret, deploy_time, source FROM run_inputs
+WHERE run_id = ANY($1::uuid[]) AND deploy_time = true AND is_secret = false
+ORDER BY run_id, idx
+`
+
+func (q *Queries) ListRunDeployInputsForRuns(ctx context.Context, dollar_1 []uuid.UUID) ([]*RunInput, error) {
+	rows, err := q.db.Query(ctx, listRunDeployInputsForRuns, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*RunInput
+	for rows.Next() {
+		var i RunInput
+		if err := rows.Scan(
+			&i.RunID,
+			&i.Idx,
+			&i.Name,
+			&i.Label,
+			&i.ValueEnc,
+			&i.IsSecret,
+			&i.DeployTime,
+			&i.Source,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunInputs = `-- name: ListRunInputs :many
+SELECT run_id, idx, name, label, value_enc, is_secret, deploy_time, source FROM run_inputs WHERE run_id = $1 ORDER BY idx
+`
+
+func (q *Queries) ListRunInputs(ctx context.Context, runID uuid.UUID) ([]*RunInput, error) {
+	rows, err := q.db.Query(ctx, listRunInputs, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*RunInput
+	for rows.Next() {
+		var i RunInput
+		if err := rows.Scan(
+			&i.RunID,
+			&i.Idx,
+			&i.Name,
+			&i.Label,
+			&i.ValueEnc,
+			&i.IsSecret,
+			&i.DeployTime,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}

@@ -68,6 +68,22 @@ value is missing or invalid, listing the problems on the target page. It
 also checks that Docker is reachable. In Keel Cloud, a target can have only
 one active run at a time.
 
+### Inputs
+
+Every run records the values it was started with, so a run stays
+explainable long after the target's variables or `keel.yaml` have changed.
+The run page shows them in two groups: the values **chosen when the deploy
+started** (deploy-time variables — the plan/apply switch, the image tag)
+and the target's **configuration** at that moment, each with the label it
+had then and a note when the value came from a default, was not set, or
+was inactive because its condition did not hold. Run tables show the
+deploy-time choices as chips (`ACTION=destroy`) so history can be scanned.
+
+Secret inputs are recorded as *set*, never as values — unlike secret
+outputs, which are meant to be read back, a secret input is never shown
+again once saved. Non-secret values are encrypted at rest like target
+values.
+
 ### Lifecycle
 
 | Status | Meaning |

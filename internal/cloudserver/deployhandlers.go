@@ -310,6 +310,7 @@ func (s *Server) targetRunsTable(r *http.Request, rc *repoCtx, t *clouddb.Target
 			table.Poll = true
 		}
 	}
+	s.attachRunInputChips(r.Context(), table.Runs)
 	return table
 }
 
@@ -522,6 +523,7 @@ func (s *Server) repoRunsTable(r *http.Request, rc *repoCtx) web.RunsTableVM {
 			table.Poll = true
 		}
 	}
+	s.attachRunInputChips(r.Context(), table.Runs)
 	return table
 }
 
@@ -560,6 +562,7 @@ func (s *Server) orgRunsTable(r *http.Request, oc *orgCtx) web.RunsTableVM {
 			table.Poll = true
 		}
 	}
+	s.attachRunInputChips(r.Context(), table.Runs)
 	return table
 }
 

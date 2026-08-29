@@ -252,6 +252,7 @@ func (s *Server) runsTable(ctx context.Context, t *devdb.Target, pollURL string)
 			table.Poll = true
 		}
 	}
+	s.attachRunInputChips(ctx, table.Runs)
 	return table
 }
 
@@ -426,6 +427,7 @@ func (s *Server) allRunsTable(r *http.Request) web.RunsTableVM {
 			table.Poll = true
 		}
 	}
+	s.attachRunInputChips(r.Context(), table.Runs)
 	return table
 }
 

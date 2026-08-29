@@ -8,6 +8,7 @@ package devdb
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const appendRunLog = `-- name: AppendRunLog :exec
@@ -225,6 +226,38 @@ func (q *Queries) GetTargetByName(ctx context.Context, arg GetTargetByNameParams
 	return &i, err
 }
 
+const insertRunInput = `-- name: InsertRunInput :exec
+
+INSERT INTO run_inputs (run_id, idx, name, label, value_enc, is_secret, deploy_time, source)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertRunInputParams struct {
+	RunID      string
+	Idx        int64
+	Name       string
+	Label      string
+	ValueEnc   []byte
+	IsSecret   int64
+	DeployTime int64
+	Source     string
+}
+
+// Run inputs -----------------------------------------------------------------
+func (q *Queries) InsertRunInput(ctx context.Context, arg InsertRunInputParams) error {
+	_, err := q.db.ExecContext(ctx, insertRunInput,
+		arg.RunID,
+		arg.Idx,
+		arg.Name,
+		arg.Label,
+		arg.ValueEnc,
+		arg.IsSecret,
+		arg.DeployTime,
+		arg.Source,
+	)
+	return err
+}
+
 const insertRunOutput = `-- name: InsertRunOutput :exec
 INSERT INTO run_outputs (run_id, name, value_enc, is_secret, created_at)
 VALUES (?, ?, ?, ?, ?)
@@ -317,6 +350,90 @@ func (q *Queries) ListActiveRuns(ctx context.Context) ([]*Run, error) {
 			&i.CreatedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunDeployInputsForRuns = `-- name: ListRunDeployInputsForRuns :many
+SELECT run_id, idx, name, label, value_enc, is_secret, deploy_time, source FROM run_inputs
+WHERE run_id IN (/*SLICE:run_ids*/?) AND deploy_time = 1 AND is_secret = 0
+ORDER BY run_id, idx
+`
+
+func (q *Queries) ListRunDeployInputsForRuns(ctx context.Context, runIds []string) ([]*RunInput, error) {
+	query := listRunDeployInputsForRuns
+	var queryParams []interface{}
+	if len(runIds) > 0 {
+		for _, v := range runIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:run_ids*/?", strings.Repeat(",?", len(runIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:run_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*RunInput
+	for rows.Next() {
+		var i RunInput
+		if err := rows.Scan(
+			&i.RunID,
+			&i.Idx,
+			&i.Name,
+			&i.Label,
+			&i.ValueEnc,
+			&i.IsSecret,
+			&i.DeployTime,
+			&i.Source,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunInputs = `-- name: ListRunInputs :many
+SELECT run_id, idx, name, label, value_enc, is_secret, deploy_time, source FROM run_inputs WHERE run_id = ? ORDER BY idx
+`
+
+func (q *Queries) ListRunInputs(ctx context.Context, runID string) ([]*RunInput, error) {
+	rows, err := q.db.QueryContext(ctx, listRunInputs, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*RunInput
+	for rows.Next() {
+		var i RunInput
+		if err := rows.Scan(
+			&i.RunID,
+			&i.Idx,
+			&i.Name,
+			&i.Label,
+			&i.ValueEnc,
+			&i.IsSecret,
+			&i.DeployTime,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}

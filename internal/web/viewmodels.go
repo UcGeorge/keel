@@ -188,6 +188,8 @@ type RunVM struct {
 	URL        string
 	CancelURL  string
 	Active     bool
+	// Inputs are the run's non-secret deploy-time values, for tables.
+	Inputs []RunInputChip
 }
 
 // Duration returns the elapsed run time (live for active runs).

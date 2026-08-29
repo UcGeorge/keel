@@ -9,6 +9,10 @@
     {{template "run_meta" dict "Run" .Run "Steps" .Steps "CanCancel" .CanCancel "CSRF" .CSRF}}
   </div>
 
+  {{if not .Inputs.Empty}}
+  {{template "run_inputs" .Inputs}}
+  {{end}}
+
   {{if .Outputs}}
   {{template "outputs_card" dict "Title" "Outputs" "Outputs" .Outputs "RunURL" "" "RunNote" ""}}
   {{template "outputs_script"}}

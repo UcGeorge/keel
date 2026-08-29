@@ -81,6 +81,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	s.storeRunInputs(r.Context(), runID, d, values)
 
 	s.startRun(run, d, t, values)
 	http.Redirect(w, r, "/runs/"+runID, http.StatusSeeOther)
@@ -298,6 +299,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		Base:      s.base(w, r, "Run"),
 		Run:       vm,
 		Steps:     steps,
+		Inputs:    web.BuildRunInputsVM(s.runInputVMs(r.Context(), run.ID)),
 		Outputs:   s.runOutputVMs(r.Context(), run.ID, d, run.Status == "succeeded"),
 		CanCancel: true,
 		Live:      vm.Active,

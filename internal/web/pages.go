@@ -14,6 +14,17 @@ type RunsTableVM struct {
 	PollURL    string
 }
 
+// HasInputs reports whether any listed run carries deploy-time chips, so
+// tables without a deployment column can add one for them.
+func (t RunsTableVM) HasInputs() bool {
+	for _, r := range t.Runs {
+		if len(r.Inputs) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // LogLineVM is one persisted log line for initial run-page render.
 type LogLineVM struct {
 	Seq  int64
@@ -74,6 +85,7 @@ type PageRun struct {
 	Base
 	Run       RunVM
 	Steps     []StepVM
+	Inputs    *RunInputsVM
 	Outputs   []OutputVM
 	LogLines  []LogLineVM
 	LastSeq   int64

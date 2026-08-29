@@ -88,6 +88,17 @@ type Run struct {
 	FinishedAt  *time.Time
 }
 
+type RunInput struct {
+	RunID      uuid.UUID
+	Idx        int32
+	Name       string
+	Label      string
+	ValueEnc   []byte
+	IsSecret   bool
+	DeployTime bool
+	Source     string
+}
+
 type RunLog struct {
 	RunID     uuid.UUID
 	Seq       int32

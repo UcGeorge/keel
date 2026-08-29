@@ -15,7 +15,7 @@
         <tr class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
           <th class="px-4 py-2.5">Status</th>
           {{if .ShowRepo}}<th class="px-4 py-2.5">Repository</th>{{end}}
-          {{if .ShowTarget}}<th class="px-4 py-2.5">Deployment / target</th>{{end}}
+          {{if .ShowTarget}}<th class="px-4 py-2.5">Deployment / target</th>{{else if .HasInputs}}<th class="px-4 py-2.5">Inputs</th>{{end}}
           <th class="px-4 py-2.5">Trigger</th>
           <th class="px-4 py-2.5">Started</th>
           <th class="px-4 py-2.5">Duration</th>
@@ -34,7 +34,10 @@
             <span class="font-medium text-slate-800">{{.Deployment}}</span>
             <span class="text-slate-400">/</span>
             <span class="text-slate-600">{{.TargetName}}</span>
+            {{template "run_input_chips" .Inputs}}
           </td>
+          {{else if $.HasInputs}}
+          <td class="px-4 py-3">{{template "run_input_chips" .Inputs}}</td>
           {{end}}
           <td class="px-4 py-3 text-slate-500">
             {{if eq .Trigger "push"}}
@@ -57,4 +60,13 @@
   {{template "empty_state" dict "Title" "No runs yet" "Hint" "Runs appear here once a deployment is started."}}
   {{end}}
 </div>
+{{end}}
+
+{{/* run_input_chips renders a run's deploy-time choices as NAME=value chips. */}}
+{{define "run_input_chips"}}
+{{if .}}
+<div class="mt-1 flex flex-wrap gap-1">
+  {{range .}}<code class="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-800 ring-1 ring-sky-600/20" title="{{.Name}}={{.Value}}">{{.Name}}=<span class="font-medium">{{.ChipValue}}</span></code>{{end}}
+</div>
+{{end}}
 {{end}}

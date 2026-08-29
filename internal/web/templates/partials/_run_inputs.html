@@ -1,0 +1,52 @@
+{{/* run_inputs renders the values a run was started with.
+     Context: *web.RunInputsVM */}}
+{{define "run_inputs"}}
+<section class="rounded-lg border border-slate-200 bg-white">
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-100 px-5 py-3">
+    <h2 class="text-sm font-semibold text-slate-900">Inputs</h2>
+    <span class="text-xs text-slate-400">the variable values this run was started with</span>
+  </div>
+  {{if .DeployTime}}
+  <div class="{{if .Config}}border-b border-slate-100 {{end}}px-5 py-4">
+    <p class="text-[11px] font-semibold uppercase tracking-wide text-sky-700">Chosen when the deploy started</p>
+    <dl class="mt-2.5 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      {{range .DeployTime}}{{template "run_input_row" .}}{{end}}
+    </dl>
+  </div>
+  {{end}}
+  {{if .Config}}
+  <details class="group" {{if le (len .Config) 12}}open{{end}}>
+    <summary class="flex cursor-pointer select-none items-center gap-2 px-5 py-3 hover:bg-slate-50">
+      <svg class="h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-90" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg>
+      <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Target configuration</span>
+      <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{{len .Config}} variable{{if ne (len .Config) 1}}s{{end}}</span>
+    </summary>
+    <dl class="grid gap-x-6 gap-y-3 border-t border-slate-100 px-5 py-4 sm:grid-cols-2">
+      {{range .Config}}{{template "run_input_row" .}}{{end}}
+    </dl>
+  </details>
+  {{end}}
+</section>
+{{end}}
+
+{{define "run_input_row"}}
+<div class="min-w-0 {{if eq .Source "inactive"}}opacity-60{{end}}">
+  <dt class="flex flex-wrap items-center gap-1.5">
+    <span class="text-xs font-medium text-slate-700">{{.Label}}</span>
+    <code class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500">{{.Name}}</code>
+    {{if .Secret}}<span class="rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 ring-1 ring-violet-600/20">secret</span>{{end}}
+    {{if eq .Source "default"}}<span class="text-[10px] text-slate-400">default</span>{{end}}
+  </dt>
+  <dd class="mt-1">
+    {{if eq .Source "inactive"}}
+    <span class="text-xs italic text-slate-400">inactive — its condition did not hold</span>
+    {{else if eq .Source "unset"}}
+    <span class="text-xs italic text-slate-400">not set</span>
+    {{else if .Secret}}
+    <code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs tracking-widest text-slate-400" title="Set for this run — secret values are never shown">••••••••</code>
+    {{else}}
+    <code class="block max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-100 px-1.5 py-1 text-xs text-slate-800">{{.Value}}</code>
+    {{end}}
+  </dd>
+</div>
+{{end}}

@@ -297,3 +297,17 @@ SELECT * FROM run_outputs WHERE run_id = $1 ORDER BY name;
 -- name: LatestSucceededRunForTarget :one
 SELECT * FROM runs WHERE target_id = $1 AND status = 'succeeded'
 ORDER BY created_at DESC, id DESC LIMIT 1;
+
+-- Run inputs -----------------------------------------------------------------
+
+-- name: InsertRunInput :exec
+INSERT INTO run_inputs (run_id, idx, name, label, value_enc, is_secret, deploy_time, source)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- name: ListRunInputs :many
+SELECT * FROM run_inputs WHERE run_id = $1 ORDER BY idx;
+
+-- name: ListRunDeployInputsForRuns :many
+SELECT * FROM run_inputs
+WHERE run_id = ANY($1::uuid[]) AND deploy_time = true AND is_secret = false
+ORDER BY run_id, idx;

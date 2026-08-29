@@ -22,6 +22,17 @@ type Run struct {
 	FinishedAt sql.NullInt64
 }
 
+type RunInput struct {
+	RunID      string
+	Idx        int64
+	Name       string
+	Label      string
+	ValueEnc   []byte
+	IsSecret   int64
+	DeployTime int64
+	Source     string
+}
+
 type RunLog struct {
 	RunID     string
 	Seq       int64

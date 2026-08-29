@@ -71,7 +71,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request, rc *repoCt
 		return
 	}
 
-	run, err := s.createRun(r.Context(), rc.Repo, d, t, "manual", "", nullUUID(rc.Sess.UserID))
+	run, err := s.createRun(r.Context(), rc.Repo, d, t, "manual", "", nullUUID(rc.Sess.UserID), values)
 	if err != nil {
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not create the run: "+err.Error())
 		return
@@ -120,7 +120,7 @@ func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.D
 	if active, err := s.Q.CountActiveRunsForTarget(ctx, nullUUID(t.ID)); err == nil && active > 0 {
 		return fmt.Errorf("target %q already has an active run", t.Name)
 	}
-	run, err := s.createRun(ctx, repo, d, t, "push", commitSHA, uuid.NullUUID{})
+	run, err := s.createRun(ctx, repo, d, t, "push", commitSHA, uuid.NullUUID{}, values)
 	if err != nil {
 		return err
 	}
@@ -128,8 +128,9 @@ func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.D
 	return nil
 }
 
-// createRun inserts the run and its step rows.
-func (s *Server) createRun(ctx context.Context, repo *clouddb.Repo, d *config.Deployment, t *clouddb.Target, trigger, commitSHA string, startedBy uuid.NullUUID) (*clouddb.Run, error) {
+// createRun inserts the run, its step rows, and the snapshot of the values
+// it starts with.
+func (s *Server) createRun(ctx context.Context, repo *clouddb.Repo, d *config.Deployment, t *clouddb.Target, trigger, commitSHA string, startedBy uuid.NullUUID, values map[string]string) (*clouddb.Run, error) {
 	run, err := s.Q.CreateRun(ctx, clouddb.CreateRunParams{
 		RepoID: repo.ID, TargetID: nullUUID(t.ID), Deployment: d.Name, TargetName: t.Name,
 		TriggerKind: trigger, CommitSha: commitSHA, StartedBy: startedBy,
@@ -142,6 +143,7 @@ func (s *Server) createRun(ctx context.Context, repo *clouddb.Repo, d *config.De
 			return nil, err
 		}
 	}
+	s.storeRunInputs(ctx, run.ID, d, values)
 	return run, nil
 }
 
@@ -369,6 +371,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request, rc *repoCtx) 
 		Base:      s.base(w, r, rc.Sess, rc.orgCtx, "Run"),
 		Run:       vm,
 		Steps:     s.stepVMs(r.Context(), run.ID),
+		Inputs:    web.BuildRunInputsVM(s.runInputVMs(r.Context(), run.ID)),
 		Outputs:   s.runOutputVMs(r.Context(), run.ID, d, run.Status == "succeeded", rc.canDeploy() || rc.canConfigure()),
 		CanCancel: rc.canDeploy(),
 		Live:      vm.Active,
