@@ -12,7 +12,7 @@ icon: "gear"
 |---|---|---|
 | `KEEL_DATABASE_URL` | — | **Required.** PostgreSQL URL, e.g. `postgres://keel:keel@localhost:5432/keel?sslmode=disable`. `DATABASE_URL` is read when unset. |
 | `KEEL_ADDR` | `:8080` | Listen address. |
-| `KEEL_BASE_URL` | `http://localhost:8080` | External URL. Used in invite links and the GitHub App webhook URL. An `https://` value turns on Secure cookies. Trailing slashes are stripped. |
+| `KEEL_BASE_URL` | `http://localhost:8080` | Public origin used for invitations, OAuth discovery, MCP token audience, and Secure cookies. HTTPS is required except on loopback. No path, query, fragment, or embedded credentials. Trailing slashes are stripped. See [MCP](/cloud/mcp). |
 | `KEEL_DATA_DIR` | `./keel-data` | Working directory for repository clones and run workspaces (`runs/<run-id>`), and the generated encryption key when none is configured. Must be a host path when `keel-cloud` runs in a container — see [self-hosting](/cloud/self-hosting#run-the-container-image). |
 | `KEEL_ENCRYPTION_KEY` | generated | 64 hexadecimal characters (32 bytes) — the AES-256 key for variable values, repository tokens, and secret outputs at rest. `openssl rand -hex 32` produces one. When unset, a key is generated into `KEEL_DATA_DIR/encryption.key` and a warning is logged. |
 
@@ -44,6 +44,10 @@ See [GitHub App](/cloud/github-app) for the setup.
 | Path | Purpose |
 |---|---|
 | `GET /healthz` | `ok` when the database responds; 503 otherwise. |
+| `/mcp` | OAuth-protected Streamable HTTP MCP endpoint. |
+| `/.well-known/oauth-protected-resource/mcp` | MCP authorization discovery. |
+| `/.well-known/oauth-authorization-server` | OAuth server metadata. |
+| `/account/agents` | View and revoke your agent connections. |
 | `POST /webhooks/github` | GitHub App deliveries; HMAC-verified. |
 | `GET /orgs/{org}/repos/{repo}/runs/{id}/events` | Server-sent events for a run's live log. Disable proxy buffering here. |
 

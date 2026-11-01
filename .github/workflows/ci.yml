@@ -1,6 +1,5 @@
 # Build, vet, and run the fast test suite on every push and pull request.
-# The Docker-backed engine tests and the cloud end-to-end test are skipped
-# here (-short); run `make test` locally for the full suite.
+# Docker/PostgreSQL integration and race checks run in a separate job.
 name: CI
 
 on:
@@ -28,6 +27,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Check reachable vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
       - name: Test (short)
         run: go test ./... -short
 
@@ -37,3 +39,38 @@ jobs:
           if [ -n "$out" ]; then
             echo "These files need gofmt:"; echo "$out"; exit 1
           fi
+
+  integration:
+    name: MCP, portal, and engine integration (race)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: keel
+          POSTGRES_PASSWORD: keel
+          POSTGRES_DB: keel
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:5432/keel?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify Docker is available
+        run: docker version
+      - name: Integration tests with race detection
+        run: go test -race ./internal/cloudserver ./internal/mcpauth ./internal/engine -count=1 -timeout 600s
+      - name: Install the repository's SQLC version
+        run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+      - name: Verify generated database code
+        run: |
+          sqlc generate
+          git diff --exit-code -- internal/store

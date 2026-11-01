@@ -64,6 +64,17 @@ default follows the system preference):
 | Notifications | — | email via your SMTP server, per-recipient event subscriptions |
 | AI insights | — | failed-run explanations from any OpenAI-compatible model |
 
+## Agents and MCP
+
+Connect an OAuth-capable MCP client to `https://your-keel-host/mcp` to
+operate Keel Cloud with your portal permissions. Request `keel:full` to
+configure targets and values, deploy, troubleshoot logs, and manage
+repositories and organization settings; use `keel:read` for inspection.
+Approve the connection in your browser and revoke it from **Account
+settings → Agent connections**. Production `KEEL_BASE_URL` must be an HTTPS
+origin. See the [MCP guide](docs/mintlify/cloud/mcp.mdx) for setup, tool
+coverage, security, and client requirements.
+
 ## Documentation
 
 - **Docs:** https://keel-cloud.mintlify.site — install, quickstart, concepts,

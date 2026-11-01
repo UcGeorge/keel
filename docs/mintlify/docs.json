@@ -59,6 +59,7 @@
               "cloud/github-app",
               "cloud/notifications",
               "cloud/ai-insights",
+              "cloud/mcp",
               "cloud/runs-and-security"
             ]
           }
