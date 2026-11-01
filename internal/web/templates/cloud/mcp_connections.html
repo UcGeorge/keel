@@ -10,7 +10,7 @@
   {{range .Connections}}
   <section class="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     <h2 class="text-sm font-semibold text-slate-900">{{.Name}}</h2>
-    <p class="mt-2 text-sm text-slate-500">{{if eq .Scope "keel:full"}}Full access{{else}}Read only{{end}} · connected {{.CreatedAt.Format "2006-01-02 15:04"}} UTC · expires {{.ExpiresAt.Format "2006-01-02"}}</p>
+    <p class="mt-2 text-sm text-slate-500">{{if eq .Scope "keel:full"}}Full access{{else}}Read only{{end}} · connected {{.CreatedAt.UTC.Format "2006-01-02 15:04"}} UTC · expires {{.ExpiresAt.Format "2006-01-02"}}</p>
     <form method="post" action="/account/agents/permissions" class="mt-4 space-y-4">
       {{template "csrf_field" $.CSRF}}
       <input type="hidden" name="grant_id" value="{{.ID}}">
