@@ -161,6 +161,8 @@ func TestRenderAllPages(t *testing.T) {
 	now := time.Now()
 
 	pages := map[string]any{
+		"auth/mcp_consent.html":      PageMCPConsent{Base: Base{Mode: "cloud", User: &UserInfo{Name: "Owner", Email: "owner@example.com"}}, ClientName: "Test agent", Full: true, RedirectURI: "https://agent.example/callback", Issuer: "https://keel.example", Fields: map[string][]string{"client_id": {"test"}}},
+		"cloud/mcp_connections.html": PageMCPConnections{Base: sampleBase(), Resource: "https://keel.example/mcp", Connections: []MCPConnectionVM{{ID: "test", Name: "Test agent", Scope: "keel:full", ExpiresAt: now}}},
 		"dashboard.html": PageDashboard{
 			Base: sampleBase(), Config: ConfigStatusVM{OK: true, Source: "keel.yaml"},
 			Deployments: []*DeploymentVM{sampleDepVM(t)}, ConfigPath: "/tmp/repo/keel.yaml",

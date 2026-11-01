@@ -304,12 +304,33 @@ func (s *Server) handleAccountPassword(w http.ResponseWriter, r *http.Request, s
 		s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not change the password")
 		return
 	}
-	if err := s.Q.UpdateUserPassword(r.Context(), clouddb.UpdateUserPasswordParams{ID: sess.UserID, PasswordHash: hash}); err != nil {
+	// Password changes and revocation are one transaction: no partial success
+	// can leave delegated credentials active after a successful password change.
+	tx, err := s.Pool.Begin(r.Context())
+	if err != nil {
 		s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not change the password")
 		return
 	}
-	// Changing the password ends every other session.
-	_ = s.Q.DeleteUserSessions(r.Context(), sess.UserID)
+	defer tx.Rollback(r.Context())
+	q := s.Q.WithTx(tx)
+	if err = q.UpdateUserPassword(r.Context(), clouddb.UpdateUserPasswordParams{ID: sess.UserID, PasswordHash: hash}); err == nil {
+		err = q.RevokeUserMCPGrants(r.Context(), sess.UserID)
+	}
+	if err == nil {
+		err = q.DeleteUserSessions(r.Context(), sess.UserID)
+	}
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not change the password")
+		return
+	}
+	if r.Context().Value(mcpSessionKey{}) != nil {
+		web.SetFlash(w, "success", "Password changed. All agent connections and browser sessions were signed out.")
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
 	if err := s.startSession(w, r, sess.User); err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return

@@ -23,6 +23,7 @@ import (
 	"github.com/UcGeorge/keel/internal/engine"
 	"github.com/UcGeorge/keel/internal/githubapp"
 	"github.com/UcGeorge/keel/internal/gitutil"
+	"github.com/UcGeorge/keel/internal/mcpauth"
 	"github.com/UcGeorge/keel/internal/runhub"
 	"github.com/UcGeorge/keel/internal/secretbox"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
@@ -82,6 +83,7 @@ type Server struct {
 	Version  string
 
 	secureCookies bool
+	stopJanitor   context.CancelFunc
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc
@@ -90,6 +92,9 @@ type Server struct {
 // New wires the cloud server: database (with migrations), encryption key,
 // templates, and the optional GitHub App.
 func New(ctx context.Context, cfg Config, version string) (*Server, error) {
+	if err := mcpauth.ValidateIssuer(cfg.BaseURL); err != nil {
+		return nil, err
+	}
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("KEEL_DATABASE_URL (or DATABASE_URL) is required, e.g. postgres://keel:keel@localhost:5432/keel")
 	}
@@ -152,21 +157,36 @@ func New(ctx context.Context, cfg Config, version string) (*Server, error) {
 	if err := s.Q.MarkInterruptedRuns(ctx); err != nil {
 		slog.Warn("mark interrupted runs", "err", err)
 	}
-	go s.janitor()
+	janitorCtx, stopJanitor := context.WithCancel(ctx)
+	s.stopJanitor = stopJanitor
+	go s.janitor(janitorCtx)
 	return s, nil
 }
 
 // Close releases resources.
-func (s *Server) Close() { s.Pool.Close() }
+func (s *Server) Close() {
+	if s.stopJanitor != nil {
+		s.stopJanitor()
+	}
+	s.Pool.Close()
+}
 
 // janitor prunes expired sessions periodically.
-func (s *Server) janitor() {
+func (s *Server) janitor(parent context.Context) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
-	for range ticker.C {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	for {
+		select {
+		case <-parent.Done():
+			return
+		case <-ticker.C:
+		}
+		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 		if err := s.Q.DeleteExpiredSessions(ctx); err != nil {
 			slog.Warn("prune sessions", "err", err)
+		}
+		if err := (mcpauth.Store{Pool: s.Pool, Q: s.Q}).Prune(ctx); err != nil {
+			slog.Warn("prune MCP credentials", "err", err)
 		}
 		cancel()
 	}
@@ -258,6 +278,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/update", repo(s.handleTargetUpdate))
 	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/delete", repo(s.handleTargetDelete))
 
+	s.registerMCP(mux)
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.errorPage(w, r, nil, http.StatusNotFound, "Page not found")
 	})
@@ -280,7 +302,8 @@ func (s *Server) recoverPanics(next http.Handler) http.Handler {
 }
 
 // checkCSRF verifies the per-session CSRF token on mutating requests.
-// The GitHub webhook authenticates with its HMAC signature instead.
+// The GitHub webhook uses HMAC. MCP and OAuth credential endpoints have
+// their own authentication; browser consent and revocation still require CSRF.
 func (s *Server) checkCSRF(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -288,9 +311,12 @@ func (s *Server) checkCSRF(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if r.URL.Path == "/webhooks/github" {
+		if r.URL.Path == "/webhooks/github" || r.URL.Path == "/mcp" || r.URL.Path == "/oauth/register" || r.URL.Path == "/oauth/token" || r.URL.Path == "/oauth/revoke" {
 			next.ServeHTTP(w, r)
 			return
+		}
+		if r.URL.Path == "/oauth/authorize" || r.URL.Path == "/account/agents/revoke" {
+			r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 		}
 		sess := s.session(r)
 		token := r.Header.Get("X-CSRF-Token")
@@ -323,6 +349,9 @@ const sessionCookie = "keel_session"
 
 // session resolves the current session, or nil.
 func (s *Server) session(r *http.Request) *sessionInfo {
+	if sess, ok := r.Context().Value(mcpSessionKey{}).(*sessionInfo); ok {
+		return sess
+	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
 		return nil

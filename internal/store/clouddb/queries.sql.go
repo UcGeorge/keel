@@ -39,6 +39,49 @@ func (q *Queries) AppendRunLog(ctx context.Context, arg AppendRunLogParams) erro
 	return err
 }
 
+const authenticateMCPToken = `-- name: AuthenticateMCPToken :one
+SELECT g.user_id, g.id AS grant_id, g.scope
+FROM mcp_tokens t JOIN mcp_grants g ON g.id = t.grant_id
+WHERE t.hash = $1 AND t.kind = 'access' AND t.expires_at > now()
+  AND g.revoked_at IS NULL AND g.expires_at > now() AND g.resource = $2
+`
+
+type AuthenticateMCPTokenParams struct {
+	Hash     []byte
+	Resource string
+}
+
+type AuthenticateMCPTokenRow struct {
+	UserID  uuid.UUID
+	GrantID uuid.UUID
+	Scope   string
+}
+
+func (q *Queries) AuthenticateMCPToken(ctx context.Context, arg AuthenticateMCPTokenParams) (*AuthenticateMCPTokenRow, error) {
+	row := q.db.QueryRow(ctx, authenticateMCPToken, arg.Hash, arg.Resource)
+	var i AuthenticateMCPTokenRow
+	err := row.Scan(&i.UserID, &i.GrantID, &i.Scope)
+	return &i, err
+}
+
+const consumeMCPCode = `-- name: ConsumeMCPCode :exec
+UPDATE mcp_codes SET used_at = now() WHERE hash = $1
+`
+
+func (q *Queries) ConsumeMCPCode(ctx context.Context, hash []byte) error {
+	_, err := q.db.Exec(ctx, consumeMCPCode, hash)
+	return err
+}
+
+const consumeMCPToken = `-- name: ConsumeMCPToken :exec
+UPDATE mcp_tokens SET used_at = now() WHERE hash = $1
+`
+
+func (q *Queries) ConsumeMCPToken(ctx context.Context, hash []byte) error {
+	_, err := q.db.Exec(ctx, consumeMCPToken, hash)
+	return err
+}
+
 const countActiveRunsForTarget = `-- name: CountActiveRunsForTarget :one
 SELECT count(*) FROM runs
 WHERE target_id = $1 AND status IN ('queued', 'building', 'running')
@@ -107,6 +150,102 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (*Or
 		&i.AcceptedAt,
 	)
 	return &i, err
+}
+
+const createMCPClient = `-- name: CreateMCPClient :exec
+
+INSERT INTO mcp_clients (id, name, redirect_uris) VALUES ($1, $2, $3)
+`
+
+type CreateMCPClientParams struct {
+	ID           string
+	Name         string
+	RedirectUris []string
+}
+
+// MCP OAuth ------------------------------------------------------------------
+func (q *Queries) CreateMCPClient(ctx context.Context, arg CreateMCPClientParams) error {
+	_, err := q.db.Exec(ctx, createMCPClient, arg.ID, arg.Name, arg.RedirectUris)
+	return err
+}
+
+const createMCPCode = `-- name: CreateMCPCode :exec
+INSERT INTO mcp_codes (hash, grant_id, redirect_uri, challenge, expires_at) VALUES ($1, $2, $3, $4, $5)
+`
+
+type CreateMCPCodeParams struct {
+	Hash        []byte
+	GrantID     uuid.UUID
+	RedirectUri string
+	Challenge   string
+	ExpiresAt   time.Time
+}
+
+func (q *Queries) CreateMCPCode(ctx context.Context, arg CreateMCPCodeParams) error {
+	_, err := q.db.Exec(ctx, createMCPCode,
+		arg.Hash,
+		arg.GrantID,
+		arg.RedirectUri,
+		arg.Challenge,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const createMCPGrant = `-- name: CreateMCPGrant :one
+INSERT INTO mcp_grants (user_id, client_id, resource, scope, expires_at)
+VALUES ($1, $2, $3, $4, $5) RETURNING id, user_id, client_id, resource, scope, created_at, expires_at, revoked_at
+`
+
+type CreateMCPGrantParams struct {
+	UserID    uuid.UUID
+	ClientID  string
+	Resource  string
+	Scope     string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateMCPGrant(ctx context.Context, arg CreateMCPGrantParams) (*McpGrant, error) {
+	row := q.db.QueryRow(ctx, createMCPGrant,
+		arg.UserID,
+		arg.ClientID,
+		arg.Resource,
+		arg.Scope,
+		arg.ExpiresAt,
+	)
+	var i McpGrant
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.Resource,
+		&i.Scope,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return &i, err
+}
+
+const createMCPToken = `-- name: CreateMCPToken :exec
+INSERT INTO mcp_tokens (hash, grant_id, kind, expires_at) VALUES ($1, $2, $3, $4)
+`
+
+type CreateMCPTokenParams struct {
+	Hash      []byte
+	GrantID   uuid.UUID
+	Kind      string
+	ExpiresAt time.Time
+}
+
+func (q *Queries) CreateMCPToken(ctx context.Context, arg CreateMCPTokenParams) error {
+	_, err := q.db.Exec(ctx, createMCPToken,
+		arg.Hash,
+		arg.GrantID,
+		arg.Kind,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const createOrg = `-- name: CreateOrg :one
@@ -427,6 +566,60 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*User, 
 	return &i, err
 }
 
+const deleteExpiredMCPAccessTokens = `-- name: DeleteExpiredMCPAccessTokens :exec
+DELETE FROM mcp_tokens WHERE kind = 'access' AND expires_at < now()
+`
+
+func (q *Queries) DeleteExpiredMCPAccessTokens(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMCPAccessTokens)
+	return err
+}
+
+const deleteExpiredMCPAudit = `-- name: DeleteExpiredMCPAudit :exec
+DELETE FROM mcp_audit WHERE created_at < now() - interval '90 days'
+`
+
+func (q *Queries) DeleteExpiredMCPAudit(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMCPAudit)
+	return err
+}
+
+const deleteExpiredMCPClients = `-- name: DeleteExpiredMCPClients :exec
+DELETE FROM mcp_clients WHERE expires_at < now()
+`
+
+func (q *Queries) DeleteExpiredMCPClients(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMCPClients)
+	return err
+}
+
+const deleteExpiredMCPCodes = `-- name: DeleteExpiredMCPCodes :exec
+DELETE FROM mcp_codes WHERE expires_at < now() - interval '1 day'
+`
+
+func (q *Queries) DeleteExpiredMCPCodes(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMCPCodes)
+	return err
+}
+
+const deleteExpiredMCPGrants = `-- name: DeleteExpiredMCPGrants :exec
+DELETE FROM mcp_grants WHERE expires_at < now()
+`
+
+func (q *Queries) DeleteExpiredMCPGrants(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMCPGrants)
+	return err
+}
+
+const deleteExpiredMCPRateLimits = `-- name: DeleteExpiredMCPRateLimits :exec
+DELETE FROM mcp_rate_limits WHERE starts_at < now() - interval '1 hour'
+`
+
+func (q *Queries) DeleteExpiredMCPRateLimits(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMCPRateLimits)
+	return err
+}
+
 const deleteExpiredSessions = `-- name: DeleteExpiredSessions :exec
 DELETE FROM sessions WHERE expires_at <= now()
 `
@@ -608,6 +801,58 @@ func (q *Queries) GetInviteByTokenHash(ctx context.Context, tokenHash []byte) (*
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.AcceptedAt,
+	)
+	return &i, err
+}
+
+const getMCPClient = `-- name: GetMCPClient :one
+SELECT id, name, redirect_uris, created_at, expires_at FROM mcp_clients WHERE id = $1 AND expires_at > now()
+`
+
+func (q *Queries) GetMCPClient(ctx context.Context, id string) (*McpClient, error) {
+	row := q.db.QueryRow(ctx, getMCPClient, id)
+	var i McpClient
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.RedirectUris,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return &i, err
+}
+
+const getMCPCode = `-- name: GetMCPCode :one
+SELECT hash, grant_id, redirect_uri, challenge, expires_at, used_at FROM mcp_codes WHERE hash = $1
+`
+
+func (q *Queries) GetMCPCode(ctx context.Context, hash []byte) (*McpCode, error) {
+	row := q.db.QueryRow(ctx, getMCPCode, hash)
+	var i McpCode
+	err := row.Scan(
+		&i.Hash,
+		&i.GrantID,
+		&i.RedirectUri,
+		&i.Challenge,
+		&i.ExpiresAt,
+		&i.UsedAt,
+	)
+	return &i, err
+}
+
+const getMCPToken = `-- name: GetMCPToken :one
+SELECT hash, grant_id, kind, expires_at, used_at FROM mcp_tokens WHERE hash = $1
+`
+
+func (q *Queries) GetMCPToken(ctx context.Context, hash []byte) (*McpToken, error) {
+	row := q.db.QueryRow(ctx, getMCPToken, hash)
+	var i McpToken
+	err := row.Scan(
+		&i.Hash,
+		&i.GrantID,
+		&i.Kind,
+		&i.ExpiresAt,
+		&i.UsedAt,
 	)
 	return &i, err
 }
@@ -903,6 +1148,22 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (
 	return &i, err
 }
 
+const getSessionForMCPApproval = `-- name: GetSessionForMCPApproval :one
+SELECT id FROM sessions WHERE id = $1 AND user_id = $2 AND expires_at > now()
+`
+
+type GetSessionForMCPApprovalParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) GetSessionForMCPApproval(ctx context.Context, arg GetSessionForMCPApprovalParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getSessionForMCPApproval, arg.ID, arg.UserID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getTarget = `-- name: GetTarget :one
 SELECT id, repo_id, deployment, name, description, auto_deploy, created_by, created_at, updated_at FROM targets WHERE id = $1
 `
@@ -988,6 +1249,23 @@ func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (*User, erro
 	return &i, err
 }
 
+const incrementMCPRateLimit = `-- name: IncrementMCPRateLimit :one
+INSERT INTO mcp_rate_limits (bucket, hits) VALUES ($1, 1)
+ON CONFLICT (bucket) DO UPDATE SET
+  hits = CASE WHEN mcp_rate_limits.starts_at < now() - interval '1 minute'
+         THEN 1 ELSE mcp_rate_limits.hits + 1 END,
+  starts_at = CASE WHEN mcp_rate_limits.starts_at < now() - interval '1 minute'
+               THEN now() ELSE mcp_rate_limits.starts_at END
+RETURNING hits
+`
+
+func (q *Queries) IncrementMCPRateLimit(ctx context.Context, bucket string) (int32, error) {
+	row := q.db.QueryRow(ctx, incrementMCPRateLimit, bucket)
+	var hits int32
+	err := row.Scan(&hits)
+	return hits, err
+}
+
 const insertDelivery = `-- name: InsertDelivery :exec
 
 INSERT INTO notification_deliveries (org_id, event, subject, recipients, status, error)
@@ -1012,6 +1290,27 @@ func (q *Queries) InsertDelivery(ctx context.Context, arg InsertDeliveryParams) 
 		arg.Recipients,
 		arg.Status,
 		arg.Error,
+	)
+	return err
+}
+
+const insertMCPAudit = `-- name: InsertMCPAudit :exec
+INSERT INTO mcp_audit (user_id, grant_id, tool, status) VALUES ($1, $2, $3, $4)
+`
+
+type InsertMCPAuditParams struct {
+	UserID  uuid.NullUUID
+	GrantID uuid.UUID
+	Tool    string
+	Status  int32
+}
+
+func (q *Queries) InsertMCPAudit(ctx context.Context, arg InsertMCPAuditParams) error {
+	_, err := q.db.Exec(ctx, insertMCPAudit,
+		arg.UserID,
+		arg.GrantID,
+		arg.Tool,
+		arg.Status,
 	)
 	return err
 }
@@ -1217,6 +1516,91 @@ func (q *Queries) ListGithubInstallations(ctx context.Context) ([]*GithubInstall
 	return items, nil
 }
 
+const listMCPConnections = `-- name: ListMCPConnections :many
+SELECT g.id, c.name, g.scope, g.created_at, g.expires_at
+FROM mcp_grants g JOIN mcp_clients c ON c.id = g.client_id
+WHERE g.user_id = $1 AND g.revoked_at IS NULL AND g.expires_at > now()
+ORDER BY g.created_at DESC
+`
+
+type ListMCPConnectionsRow struct {
+	ID        uuid.UUID
+	Name      string
+	Scope     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+func (q *Queries) ListMCPConnections(ctx context.Context, userID uuid.UUID) ([]*ListMCPConnectionsRow, error) {
+	rows, err := q.db.Query(ctx, listMCPConnections, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListMCPConnectionsRow
+	for rows.Next() {
+		var i ListMCPConnectionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Scope,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMCPOrgsForUser = `-- name: ListMCPOrgsForUser :many
+SELECT o.id, o.slug, o.name, o.personal, m.role, m.can_configure, m.can_deploy
+FROM orgs o JOIN org_members m ON m.org_id = o.id
+WHERE m.user_id = $1 ORDER BY o.personal DESC, o.name, o.id
+`
+
+type ListMCPOrgsForUserRow struct {
+	ID           uuid.UUID
+	Slug         string
+	Name         string
+	Personal     bool
+	Role         string
+	CanConfigure bool
+	CanDeploy    bool
+}
+
+func (q *Queries) ListMCPOrgsForUser(ctx context.Context, userID uuid.UUID) ([]*ListMCPOrgsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listMCPOrgsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListMCPOrgsForUserRow
+	for rows.Next() {
+		var i ListMCPOrgsForUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Personal,
+			&i.Role,
+			&i.CanConfigure,
+			&i.CanDeploy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOrgInvites = `-- name: ListOrgInvites :many
 SELECT id, org_id, email, role, can_configure, can_deploy, token_hash, invited_by, created_at, expires_at, accepted_at FROM org_invites
 WHERE org_id = $1 AND accepted_at IS NULL AND expires_at > now()
@@ -1293,6 +1677,42 @@ func (q *Queries) ListOrgMembers(ctx context.Context, orgID uuid.UUID) ([]*ListO
 			&i.Email,
 			&i.Name,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrgRunIDsPage = `-- name: ListOrgRunIDsPage :many
+SELECT runs.id, repos.name AS repo_name FROM runs JOIN repos ON repos.id = runs.repo_id
+WHERE repos.org_id = $1 ORDER BY runs.created_at DESC, runs.id DESC LIMIT $2 OFFSET $3
+`
+
+type ListOrgRunIDsPageParams struct {
+	OrgID  uuid.UUID
+	Limit  int32
+	Offset int32
+}
+
+type ListOrgRunIDsPageRow struct {
+	ID       uuid.UUID
+	RepoName string
+}
+
+func (q *Queries) ListOrgRunIDsPage(ctx context.Context, arg ListOrgRunIDsPageParams) ([]*ListOrgRunIDsPageRow, error) {
+	rows, err := q.db.Query(ctx, listOrgRunIDsPage, arg.OrgID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListOrgRunIDsPageRow
+	for rows.Next() {
+		var i ListOrgRunIDsPageRow
+		if err := rows.Scan(&i.ID, &i.RepoName); err != nil {
 			return nil, err
 		}
 		items = append(items, &i)
@@ -1414,6 +1834,42 @@ func (q *Queries) ListRecipientsForEvent(ctx context.Context, arg ListRecipients
 			&i.UpdatedAt,
 			&i.IncludeInsight,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRepoRunIDsPage = `-- name: ListRepoRunIDsPage :many
+SELECT runs.id, repos.name AS repo_name FROM runs JOIN repos ON repos.id = runs.repo_id
+WHERE runs.repo_id = $1 ORDER BY runs.created_at DESC, runs.id DESC LIMIT $2 OFFSET $3
+`
+
+type ListRepoRunIDsPageParams struct {
+	RepoID uuid.UUID
+	Limit  int32
+	Offset int32
+}
+
+type ListRepoRunIDsPageRow struct {
+	ID       uuid.UUID
+	RepoName string
+}
+
+func (q *Queries) ListRepoRunIDsPage(ctx context.Context, arg ListRepoRunIDsPageParams) ([]*ListRepoRunIDsPageRow, error) {
+	rows, err := q.db.Query(ctx, listRepoRunIDsPage, arg.RepoID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListRepoRunIDsPageRow
+	for rows.Next() {
+		var i ListRepoRunIDsPageRow
+		if err := rows.Scan(&i.ID, &i.RepoName); err != nil {
 			return nil, err
 		}
 		items = append(items, &i)
@@ -1635,6 +2091,41 @@ func (q *Queries) ListRunLogsAfter(ctx context.Context, arg ListRunLogsAfterPara
 			&i.Line,
 			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunLogsPage = `-- name: ListRunLogsPage :many
+SELECT seq, line FROM run_logs WHERE run_id = $1 AND seq > $2 ORDER BY seq LIMIT $3
+`
+
+type ListRunLogsPageParams struct {
+	RunID uuid.UUID
+	Seq   int32
+	Limit int32
+}
+
+type ListRunLogsPageRow struct {
+	Seq  int32
+	Line string
+}
+
+func (q *Queries) ListRunLogsPage(ctx context.Context, arg ListRunLogsPageParams) ([]*ListRunLogsPageRow, error) {
+	rows, err := q.db.Query(ctx, listRunLogsPage, arg.RunID, arg.Seq, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*ListRunLogsPageRow
+	for rows.Next() {
+		var i ListRunLogsPageRow
+		if err := rows.Scan(&i.Seq, &i.Line); err != nil {
 			return nil, err
 		}
 		items = append(items, &i)
@@ -1968,6 +2459,38 @@ func (q *Queries) ListTargetsForRepo(ctx context.Context, repoID uuid.UUID) ([]*
 	return items, nil
 }
 
+const lockMCPGrant = `-- name: LockMCPGrant :one
+SELECT id, user_id, client_id, resource, scope, created_at, expires_at, revoked_at FROM mcp_grants
+WHERE id = $1 AND revoked_at IS NULL AND expires_at > now() FOR UPDATE
+`
+
+func (q *Queries) LockMCPGrant(ctx context.Context, id uuid.UUID) (*McpGrant, error) {
+	row := q.db.QueryRow(ctx, lockMCPGrant, id)
+	var i McpGrant
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.Resource,
+		&i.Scope,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return &i, err
+}
+
+const lockUserForMCPApproval = `-- name: LockUserForMCPApproval :one
+SELECT id FROM users WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockUserForMCPApproval(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockUserForMCPApproval, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const markInterruptedRuns = `-- name: MarkInterruptedRuns :exec
 UPDATE runs
 SET status = 'failed', error = 'interrupted: the server was stopped while the run was in progress', finished_at = now()
@@ -1993,6 +2516,53 @@ type PruneDeliveriesParams struct {
 
 func (q *Queries) PruneDeliveries(ctx context.Context, arg PruneDeliveriesParams) error {
 	_, err := q.db.Exec(ctx, pruneDeliveries, arg.OrgID, arg.Limit)
+	return err
+}
+
+const revokeMCPGrant = `-- name: RevokeMCPGrant :exec
+UPDATE mcp_grants SET revoked_at = now() WHERE id = $1
+`
+
+func (q *Queries) RevokeMCPGrant(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeMCPGrant, id)
+	return err
+}
+
+const revokeMCPGrantForUser = `-- name: RevokeMCPGrantForUser :exec
+UPDATE mcp_grants SET revoked_at = now() WHERE id = $1 AND user_id = $2
+`
+
+type RevokeMCPGrantForUserParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+}
+
+func (q *Queries) RevokeMCPGrantForUser(ctx context.Context, arg RevokeMCPGrantForUserParams) error {
+	_, err := q.db.Exec(ctx, revokeMCPGrantForUser, arg.ID, arg.UserID)
+	return err
+}
+
+const revokeMCPTokenFamily = `-- name: RevokeMCPTokenFamily :exec
+UPDATE mcp_grants SET revoked_at = now()
+WHERE client_id = $1 AND id IN (SELECT grant_id FROM mcp_tokens WHERE hash = $2)
+`
+
+type RevokeMCPTokenFamilyParams struct {
+	ClientID string
+	Hash     []byte
+}
+
+func (q *Queries) RevokeMCPTokenFamily(ctx context.Context, arg RevokeMCPTokenFamilyParams) error {
+	_, err := q.db.Exec(ctx, revokeMCPTokenFamily, arg.ClientID, arg.Hash)
+	return err
+}
+
+const revokeUserMCPGrants = `-- name: RevokeUserMCPGrants :exec
+UPDATE mcp_grants SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeUserMCPGrants(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeUserMCPGrants, userID)
 	return err
 }
 
@@ -2074,6 +2644,15 @@ type StartRunParams struct {
 
 func (q *Queries) StartRun(ctx context.Context, arg StartRunParams) error {
 	_, err := q.db.Exec(ctx, startRun, arg.ID, arg.Status)
+	return err
+}
+
+const touchMCPClient = `-- name: TouchMCPClient :exec
+UPDATE mcp_clients SET expires_at = now() + interval '90 days' WHERE id = $1
+`
+
+func (q *Queries) TouchMCPClient(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, touchMCPClient, id)
 	return err
 }
 

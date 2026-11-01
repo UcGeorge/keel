@@ -33,7 +33,7 @@ type LogLineVM struct {
 
 // PageDashboard is the Keel Dev home page.
 type PageDashboard struct {
-	Base
+	Base        `json:"-"`
 	Config      ConfigStatusVM
 	Deployments []*DeploymentVM
 	ConfigPath  string
@@ -41,7 +41,7 @@ type PageDashboard struct {
 
 // PageDeployment is the deployment detail page (dev and cloud).
 type PageDeployment struct {
-	Base
+	Base         `json:"-"`
 	Dep          *DeploymentVM
 	CanConfigure bool
 	CanDeploy    bool
@@ -53,7 +53,7 @@ type PageDeployment struct {
 
 // PageTarget is the target detail page (dev and cloud).
 type PageTarget struct {
-	Base
+	Base   `json:"-"`
 	Dep    *DeploymentVM
 	Target TargetVM
 	Fields []VarFieldVM
@@ -82,7 +82,7 @@ type PageTarget struct {
 
 // PageRun is the run detail page (dev and cloud).
 type PageRun struct {
-	Base
+	Base    `json:"-"`
 	Run     RunVM
 	Steps   []StepVM
 	Inputs  *RunInputsVM
@@ -99,14 +99,14 @@ type PageRun struct {
 
 // PageRuns is a runs listing page.
 type PageRuns struct {
-	Base
+	Base    `json:"-"`
 	Heading string
 	Table   RunsTableVM
 }
 
 // PageManifest is the manifest builder page.
 type PageManifest struct {
-	Base
+	Base       `json:"-"`
 	Dep        *DeploymentVM
 	TargetName string
 	Selected   map[string]bool
@@ -119,7 +119,7 @@ type PageManifest struct {
 
 // PageConfig is the Keel Dev configuration page.
 type PageConfig struct {
-	Base
+	Base    `json:"-"`
 	Config  ConfigStatusVM
 	RawYAML string
 	Path    string
@@ -127,7 +127,7 @@ type PageConfig struct {
 
 // PageError is the shared error page.
 type PageError struct {
-	Base
+	Base    `json:"-"`
 	Code    int
 	Message string
 	HomeURL string
@@ -153,7 +153,7 @@ type RepoVM struct {
 
 // PageLogin is the sign-in page.
 type PageLogin struct {
-	Base
+	Base  `json:"-"`
 	Email string
 	Error string
 	Next  string
@@ -161,7 +161,7 @@ type PageLogin struct {
 
 // PageSignup is the registration page.
 type PageSignup struct {
-	Base
+	Base   `json:"-"`
 	Name   string
 	Email  string
 	Next   string
@@ -170,7 +170,7 @@ type PageSignup struct {
 
 // PageInvite is the invite acceptance page.
 type PageInvite struct {
-	Base
+	Base      `json:"-"`
 	OrgName   string
 	Role      string
 	Token     string
@@ -180,14 +180,14 @@ type PageInvite struct {
 
 // PageOrgNew is the create-organization page.
 type PageOrgNew struct {
-	Base
+	Base  `json:"-"`
 	Name  string
 	Error string
 }
 
 // PageRepos is the organization home: connected repositories.
 type PageRepos struct {
-	Base
+	Base         `json:"-"`
 	Repos        []RepoVM
 	CanConfigure bool
 	ConnectURL   string
@@ -201,7 +201,7 @@ type GithubPickVM struct {
 
 // PageRepoNew is the connect-repository page.
 type PageRepoNew struct {
-	Base
+	Base          `json:"-"`
 	Name          string
 	GitURL        string
 	Branch        string
@@ -215,7 +215,7 @@ type PageRepoNew struct {
 
 // PageRepo is the repository overview page.
 type PageRepo struct {
-	Base
+	Base         `json:"-"`
 	Repo         RepoVM
 	Config       ConfigStatusVM
 	Deployments  []*DeploymentVM
@@ -225,7 +225,7 @@ type PageRepo struct {
 
 // PageRepoSettings is the repository settings page.
 type PageRepoSettings struct {
-	Base
+	Base      `json:"-"`
 	Repo      RepoVM
 	Errors    map[string]string
 	HasToken  bool
@@ -256,7 +256,7 @@ type InviteVM struct {
 
 // PageMembers is the organization members page.
 type PageMembers struct {
-	Base
+	Base       `json:"-"`
 	Members    []MemberVM
 	Invites    []InviteVM
 	CanManage  bool
@@ -267,7 +267,7 @@ type PageMembers struct {
 
 // PageOrgSettings is the organization settings page.
 type PageOrgSettings struct {
-	Base
+	Base     `json:"-"`
 	OrgName  string
 	Personal bool
 	IsOwner  bool
@@ -276,7 +276,7 @@ type PageOrgSettings struct {
 
 // PageAccount is the user account page.
 type PageAccount struct {
-	Base
+	Base    `json:"-"`
 	Name    string
 	Email   string
 	Errors  map[string]string
@@ -339,7 +339,7 @@ type EventInfoVM struct {
 
 // PageNotifications is the organization notifications page.
 type PageNotifications struct {
-	Base
+	Base         `json:"-"`
 	URLBase      string
 	SMTP         SMTPFormVM
 	Recipients   []RecipientVM
@@ -364,7 +364,7 @@ type AIPresetVM struct {
 
 // PageAI is the organization AI settings page.
 type PageAI struct {
-	Base
+	Base       `json:"-"`
 	URLBase    string
 	Configured bool
 	BaseURL    string
@@ -416,5 +416,30 @@ type InsightCardVM struct {
 	// SetupURL points admins at the AI settings page when unconfigured.
 	SetupURL string
 	Error    string
-	CSRF     string
+	CSRF     string `json:"-"`
+}
+
+// PageMCPConsent asks the signed-in user to delegate access to an agent.
+type PageMCPConsent struct {
+	Base        `json:"-"`
+	ClientName  string
+	Fields      map[string][]string
+	Full        bool
+	RedirectURI string
+	Issuer      string
+}
+
+type MCPConnectionVM struct {
+	ID        string
+	Name      string
+	Scope     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// PageMCPConnections lists revocable OAuth grants owned by the current user.
+type PageMCPConnections struct {
+	Base        `json:"-"`
+	Resource    string
+	Connections []MCPConnectionVM
 }

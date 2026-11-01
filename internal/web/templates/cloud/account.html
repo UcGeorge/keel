@@ -1,6 +1,7 @@
 {{define "content"}}
 <div class="mx-auto w-full max-w-2xl space-y-6">
   <h1 class="text-xl font-semibold tracking-tight text-slate-900">Account settings</h1>
+  <p><a href="/account/agents" class="text-sm font-medium text-teal-700 hover:underline">Manage agent connections (MCP)</a></p>
 
   <form method="post" action="/account/profile" class="space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
     {{template "csrf_field" .CSRF}}
