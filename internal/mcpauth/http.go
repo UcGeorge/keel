@@ -20,6 +20,7 @@ import (
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // User is resolved exclusively from the browser's existing portal session.
@@ -73,6 +74,7 @@ func (s *Service) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /oauth/token", s.token)
 	mux.HandleFunc("POST /oauth/revoke", s.revoke)
 	mux.HandleFunc("GET /account/agents", s.connections)
+	mux.HandleFunc("POST /account/agents/permissions", s.updateConnectionPermissions)
 	mux.HandleFunc("POST /account/agents/revoke", s.revokeConnection)
 }
 func (s *Service) resourceMetadata(w http.ResponseWriter, r *http.Request) {
@@ -208,8 +210,12 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	scope := normalizeScope(q.Get("scope"))
-	if scope == "" {
+	if scope == "" && r.Method == http.MethodGet {
 		scope = ReadScope
+	}
+	if r.Method == http.MethodPost && q.Get("scope") != ReadScope && q.Get("scope") != FullScope {
+		oauthError(w, 400, "invalid_scope", "Choose read-only or full access.")
+		return
 	}
 	q.Set("scope", scope)
 	if scope != ReadScope && scope != FullScope {
@@ -222,10 +228,10 @@ func (s *Service) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet {
 		fields := url.Values{}
-		for _, key := range []string{"client_id", "redirect_uri", "response_type", "resource", "scope", "code_challenge", "code_challenge_method", "state"} {
+		for _, key := range []string{"client_id", "redirect_uri", "response_type", "resource", "code_challenge", "code_challenge_method", "state"} {
 			fields.Set(key, q.Get(key))
 		}
-		s.browserHeaders(w)
+		s.consentHeaders(w)
 		s.Renderer.Render(w, http.StatusOK, "auth/mcp_consent.html", web.PageMCPConsent{Base: s.Base(w, r, "Connect an agent"), ClientName: client.Name, Fields: fields, Full: scope == FullScope, RedirectURI: q.Get("redirect_uri"), Issuer: s.Issuer})
 		return
 	}
@@ -363,13 +369,65 @@ func (s *Service) connections(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not load connections", http.StatusServiceUnavailable)
 		return
 	}
-	page := web.PageMCPConnections{Base: s.Base(w, r, "Agent connections"), Resource: s.Resource()}
+	page := web.PageMCPConnections{Base: s.Base(w, r, "Agent connections"), Resource: s.Resource(), Updated: r.URL.Query().Get("updated") == "1"}
 	for _, row := range rows {
 		page.Connections = append(page.Connections, web.MCPConnectionVM{ID: row.ID.String(), Name: row.Name, Scope: row.Scope, CreatedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt})
 	}
 	s.browserHeaders(w)
 	s.Renderer.Render(w, http.StatusOK, "cloud/mcp_connections.html", page)
 }
+
+// Only the signed-in owner may change delegated authority. This is deliberately
+// not an MCP tool: an agent must not be able to expand its own permissions.
+func (s *Service) updateConnectionPermissions(w http.ResponseWriter, r *http.Request) {
+	user := s.browserUser(w, r)
+	if user == nil {
+		return
+	}
+	if !parseTokenForm(w, r) {
+		return
+	}
+	if user.CSRF == "" || r.PostForm.Get("_csrf") != user.CSRF {
+		http.Error(w, "Invalid form", http.StatusForbidden)
+		return
+	}
+	id, err := uuid.Parse(r.PostForm.Get("grant_id"))
+	scope := r.PostForm.Get("scope")
+	if err != nil || (scope != ReadScope && scope != FullScope) {
+		http.Error(w, "Choose a valid connection and access level", http.StatusBadRequest)
+		return
+	}
+	tx, err := s.Store.Pool.Begin(r.Context())
+	if err != nil {
+		http.Error(w, "Could not update permissions", http.StatusServiceUnavailable)
+		return
+	}
+	defer tx.Rollback(r.Context())
+	q := s.Store.Q.WithTx(tx)
+	// Match consent's lock order and session re-check so a password change cannot
+	// race a stale browser session into granting more authority.
+	if _, err = q.LockUserForMCPApproval(r.Context(), user.ID); err == nil {
+		_, err = q.GetSessionForMCPApproval(r.Context(), clouddb.GetSessionForMCPApprovalParams{ID: user.SessionID, UserID: user.ID})
+	}
+	if err != nil {
+		http.Error(w, "Your session has ended. Sign in again.", http.StatusForbidden)
+		return
+	}
+	_, err = q.UpdateMCPGrantScopeForUser(r.Context(), clouddb.UpdateMCPGrantScopeForUserParams{ID: id, UserID: user.ID, Scope: scope})
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.Error(w, "Active connection not found", http.StatusNotFound)
+		return
+	}
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		http.Error(w, "Could not update permissions", http.StatusServiceUnavailable)
+		return
+	}
+	http.Redirect(w, r, "/account/agents?updated=1", http.StatusSeeOther)
+}
+
 func (s *Service) revokeConnection(w http.ResponseWriter, r *http.Request) {
 	user := s.browserUser(w, r)
 	if user == nil {
@@ -397,6 +455,16 @@ func (s *Service) browserHeaders(w http.ResponseWriter) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; form-action 'self'; base-uri 'self'")
+}
+
+func (s *Service) consentHeaders(w http.ResponseWriter) {
+	s.browserHeaders(w)
+	// Chromium applies form-action to redirects after a native form submission.
+	// Consent must navigate to the registered callback and through any redirects
+	// that client performs, so even an allowlist of callback origins is insufficient.
+	// Omit this directive only here; authorize still validates the exact registered
+	// redirect URI and the browser CSRF token before either approval or denial.
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'")
 }
 
 // Full access includes read; clients may request either or both advertised scopes.

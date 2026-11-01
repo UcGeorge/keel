@@ -445,6 +445,11 @@ UPDATE mcp_grants SET revoked_at = now() WHERE id = $1;
 -- name: RevokeMCPGrantForUser :exec
 UPDATE mcp_grants SET revoked_at = now() WHERE id = $1 AND user_id = $2;
 
+-- name: UpdateMCPGrantScopeForUser :one
+UPDATE mcp_grants SET scope = $3
+WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+RETURNING *;
+
 -- name: RevokeUserMCPGrants :exec
 UPDATE mcp_grants SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
 

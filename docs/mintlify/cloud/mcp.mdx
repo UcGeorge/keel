@@ -39,12 +39,15 @@ Streamable HTTP MCP with OAuth authorization code and PKCE.
     clients use `token_endpoint_auth_method: none`; no client secret is needed.
   </Step>
   <Step title="Choose access and authorize">
-    Request `keel:full` to manage deployments and settings, or `keel:read`
-    for inspection and troubleshooting. If the client omits a scope, Keel
-    defaults to `keel:read`. Requesting both grants `keel:full`.
+    Sign in to Keel in the browser. On **Connect an agent to Keel**, choose
+    **Read only** for inspection and troubleshooting, or **Full access** to
+    manage deployments and settings. Read only is selected by default;
+    full access requires your explicit choice.
 
-    Sign in to Keel in the browser. Check the application name, callback
-    address, and requested access, then select **Authorize connection**.
+    Check the application name and callback address, then select
+    **Authorize connection**. You can choose either access level even if
+    your agent app has no scope setting. Its requested scope is shown for
+    context; your selection determines the permissions granted.
     The application name is supplied by the client; it is not a verification badge.
   </Step>
   <Step title="Discover your deployments">
@@ -64,6 +67,10 @@ Streamable HTTP MCP with OAuth authorization code and PKCE.
 OAuth does not elevate your role. A member without deployment permission
 cannot deploy even with `keel:full`. Removing a membership or changing its
 permissions applies to subsequent calls on an existing connection.
+
+The OAuth token response reports the scope you selected. Clients can request
+`keel:read`, `keel:full`, or both, but the signed-in owner makes the final
+choice on the consent page.
 
 Saved secret inputs and Git, SMTP, and AI credentials remain write-only.
 Secret **outputs** follow the portal's reveal permission: members with
@@ -150,10 +157,21 @@ A successful mutation commonly returns status `303` and the resulting
 portal location. Do not automatically repeat mutations after a network
 timeout: check whether the target, invitation, or run was created first.
 
-## Revoke a connection
+## Change access or revoke a connection
 
-Open **Account settings → Manage agent connections (MCP)** and select
-**Revoke connection**. You can also use `revoke_agent_connection` with
+Open **Account settings → Manage agent connections (MCP)**. Each connection
+shows its current access level, connection date, and expiry. Choose
+**Read only** or **Full access** and select **Save permissions** to update it.
+Only that connection changes. Existing access tokens use the new permissions
+on subsequent requests; refreshing tokens does not restore removed access.
+Already-running operations are not cancelled by a permission change.
+
+Only the signed-in owner can edit these permissions in the portal. Agents
+cannot change their own or another connection's access level through MCP.
+If your agent caches permissions or explicitly requests its previous scope
+when refreshing, reconnect it and select the desired access level again.
+
+Select **Revoke connection** to remove access entirely. You can also use `revoke_agent_connection` with
 `keel:full`. Revocation prevents subsequent requests using that connection's
 access or refresh tokens. It does not cancel runs already started.
 

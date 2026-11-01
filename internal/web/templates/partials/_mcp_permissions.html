@@ -1,0 +1,18 @@
+{{define "mcp_permissions"}}
+<fieldset class="space-y-3">
+  <legend class="text-sm font-semibold text-slate-900">Access level</legend>
+  <label class="flex cursor-pointer items-start gap-3 rounded-md border border-slate-300 p-4">
+    <input type="radio" name="scope" value="keel:read" aria-label="Read only" {{if eq . "keel:read"}}checked{{end}} required class="mt-1 accent-teal-600">
+    <span class="text-sm"><strong class="text-slate-900">Read only</strong> <code class="text-slate-500">keel:read</code>
+      <span class="mt-1 block text-slate-600">Inspect organizations, repositories, targets, values, runs and logs. Cannot change settings or start deployments.</span>
+    </span>
+  </label>
+  <label class="flex cursor-pointer items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-4">
+    <input type="radio" name="scope" value="keel:full" aria-label="Full access" {{if eq . "keel:full"}}checked{{end}} required class="mt-1 accent-teal-600">
+    <span class="text-sm"><strong class="text-slate-900">Full access</strong> <code class="text-slate-500">keel:full</code>
+      <span class="mt-1 block text-slate-600">Also change configuration and credentials, deploy or cancel runs, manage members, and delete resources, within your portal permissions.</span>
+    </span>
+  </label>
+  <p class="text-sm text-slate-500">Both levels can read sensitive deployment outputs you can view in the portal. Only grant access to an app you trust.</p>
+</fieldset>
+{{end}}

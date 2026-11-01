@@ -59,11 +59,20 @@ jobs:
           --health-retries 10
     env:
       KEEL_TEST_DATABASE_URL: postgres://keel:keel@localhost:5432/keel?sslmode=disable
+      KEEL_TEST_BROWSER: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install browser regression dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
       - name: Verify Docker is available
         run: docker version
       - name: Integration tests with race detection
