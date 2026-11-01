@@ -18,6 +18,57 @@ type GithubInstallation struct {
 	CreatedAt      time.Time
 }
 
+type McpAudit struct {
+	ID        int64
+	UserID    uuid.NullUUID
+	GrantID   uuid.UUID
+	Tool      string
+	Status    int32
+	CreatedAt time.Time
+}
+
+type McpClient struct {
+	ID           string
+	Name         string
+	RedirectUris []string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+}
+
+type McpCode struct {
+	Hash        []byte
+	GrantID     uuid.UUID
+	RedirectUri string
+	Challenge   string
+	ExpiresAt   time.Time
+	UsedAt      *time.Time
+}
+
+type McpGrant struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ClientID  string
+	Resource  string
+	Scope     string
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	RevokedAt *time.Time
+}
+
+type McpRateLimit struct {
+	Bucket   string
+	StartsAt time.Time
+	Hits     int32
+}
+
+type McpToken struct {
+	Hash      []byte
+	GrantID   uuid.UUID
+	Kind      string
+	ExpiresAt time.Time
+	UsedAt    *time.Time
+}
+
 type NotificationDelivery struct {
 	ID         uuid.UUID
 	OrgID      uuid.UUID

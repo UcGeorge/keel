@@ -390,7 +390,10 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request, rc *repoCtx) 
 		BackURL:   s.runBackURL(rc, run),
 		EventsURL: rc.repoURL() + "/runs/" + run.ID.String() + "/events",
 	}
-	logs, _ := s.Q.ListRunLogs(r.Context(), run.ID)
+	var logs []*clouddb.RunLog
+	if r.Context().Value(mcpSessionKey{}) == nil {
+		logs, _ = s.Q.ListRunLogs(r.Context(), run.ID)
+	}
 	for _, l := range logs {
 		page.LogLines = append(page.LogLines, web.LogLineVM{Seq: int64(l.Seq), Line: l.Line})
 		page.LastSeq = int64(l.Seq)

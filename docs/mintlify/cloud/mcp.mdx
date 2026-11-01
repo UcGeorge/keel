@@ -1,0 +1,208 @@
+---
+title: "Connect agents with MCP"
+sidebarTitle: "MCP and agents"
+description: "Authorize an agent against your Keel Cloud deployment to manage targets, values, runs, logs, repositories, and organization settings."
+icon: "robot"
+---
+
+Keel Cloud exposes its portal actions through a remote Model Context
+Protocol (MCP) server at `/mcp`. Your agent signs in through OAuth and acts
+with your current organization permissions. This endpoint belongs to
+`keel-cloud`; `keel dev` does not expose an MCP server.
+
+## Connect your agent
+
+You need an existing Keel Cloud account and a client that supports remote
+Streamable HTTP MCP with OAuth authorization code and PKCE.
+
+<Steps>
+  <Step title="Configure the public URL">
+    Set `KEEL_BASE_URL` to the origin your agent and browser can reach:
+
+    ```bash
+    export KEEL_BASE_URL='https://keel.example.com'
+    ```
+
+    Use HTTPS in production. HTTP is accepted only for `localhost` and
+    loopback IP addresses. Paths, query strings, fragments, and embedded
+    credentials are not accepted in the base URL.
+  </Step>
+  <Step title="Add the remote MCP server">
+    In your agent's MCP connection settings, enter:
+
+    ```text
+    https://keel.example.com/mcp
+    ```
+
+    Select HTTP/Streamable HTTP transport and OAuth authentication. Keel
+    advertises discovery and dynamic client registration endpoints. Public
+    clients use `token_endpoint_auth_method: none`; no client secret is needed.
+  </Step>
+  <Step title="Choose access and authorize">
+    Request `keel:full` to manage deployments and settings, or `keel:read`
+    for inspection and troubleshooting. If the client omits a scope, Keel
+    defaults to `keel:read`. Requesting both grants `keel:full`.
+
+    Sign in to Keel in the browser. Check the application name, callback
+    address, and requested access, then select **Authorize connection**.
+    The application name is supplied by the client; it is not a verification badge.
+  </Step>
+  <Step title="Discover your deployments">
+    Ask your agent to list your organizations and repositories, then inspect
+    a deployment or troubleshoot a run. The agent can discover each tool's
+    required arguments through MCP.
+  </Step>
+</Steps>
+
+## Access and permissions
+
+| Scope | Access |
+|---|---|
+| `keel:read` | Read account information, organizations, repositories, deployment definitions, targets, non-secret saved values, manifests, members, runs, logs, outputs, and settings you can view. |
+| `keel:full` | Read access plus portal mutations: configure values, deploy, cancel, manage repositories and targets, administer members and settings, and delete resources where your role permits. |
+
+OAuth does not elevate your role. A member without deployment permission
+cannot deploy even with `keel:full`. Removing a membership or changing its
+permissions applies to subsequent calls on an existing connection.
+
+Saved secret inputs and Git, SMTP, and AI credentials remain write-only.
+Secret **outputs** follow the portal's reveal permission: members with
+configuration or deployment access can receive them. Read access can
+therefore include sensitive outputs. Only authorize agents you trust with
+the information your account can see.
+
+## What agents can do
+
+| Area | Tools |
+|---|---|
+| Account | `get_account`, `update_profile`, `change_password`, `list_agent_connections`, `revoke_agent_connection` |
+| Organizations | `list_organizations`, `create_organization`, `get_organization_settings`, `rename_organization`, `delete_organization` |
+| Membership | `list_members`, `invite_member`, `update_member`, `remove_member`, `revoke_invite`, `get_invite`, `accept_invite` |
+| Repositories | `list_repositories`, `get_repository_choices`, `connect_repository`, `get_repository`, `get_repository_settings`, `update_repository`, `sync_repository`, `delete_repository` |
+| Deployments and targets | `get_deployment`, `create_target`, `get_target`, `update_target`, `delete_target`, `save_target_values`, `deploy_target`, `get_deployment_manifest`, `get_target_manifest` |
+| Runs | `list_org_runs`, `list_repo_runs`, `get_run`, `get_run_logs`, `cancel_run`, `generate_run_insight` |
+| Notifications | `get_notifications`, `configure_smtp`, `test_smtp`, `create_recipient`, `update_recipient`, `delete_recipient` |
+| AI settings | `get_ai_settings`, `list_ai_models`, `test_ai`, `configure_ai`, `delete_ai_settings` |
+
+Signing up and signing in remain browser actions. Installing a GitHub App
+on GitHub also requires GitHub's authorization flow; MCP can select and
+connect repositories from installations already available to Keel.
+
+### Configure and deploy a target
+
+A typical agent sequence is:
+
+1. `list_organizations`, then `list_repositories` with the organization slug.
+2. `get_repository` to discover the deployment names.
+3. `create_target` with `org`, `repo`, `dep`, and `name`.
+4. `get_target` to inspect the declared variables, types, defaults, and requirements.
+5. `save_target_values` with a `values` object.
+6. `deploy_target` with any deploy-time values.
+7. `get_run` and `get_run_logs` using the run ID in the returned location.
+
+For example, the arguments to save target configuration look like:
+
+```json
+{
+  "org": "acme",
+  "repo": "api",
+  "dep": "aws-production",
+  "target": "client-acme",
+  "values": {
+    "AWS_REGION": "eu-west-1",
+    "REPLICAS": "3"
+  }
+}
+```
+
+All variable values are strings, including numbers and booleans. Omitted
+values remain unchanged. A blank non-secret clears its saved value; a
+blank secret keeps its saved value. Unknown variables and variables sent
+to the wrong phase are rejected. As in the portal, valid values are saved
+even when another submitted value fails validation; inspect the returned
+field errors before retrying.
+
+### Troubleshoot a run
+
+`get_run` returns metadata, steps, input snapshots, outputs, and the stored
+AI insight. `get_run_logs` returns persisted log lines in sequence order:
+
+```json
+{
+  "org": "acme",
+  "repo": "api",
+  "id": "8b35b3f3-2cf8-40ee-b7bc-296b5ed76b71",
+  "after_seq": 0,
+  "limit": 50
+}
+```
+
+Pass the returned `next_after_seq` as `after_seq` on the next call. Continue
+while `has_more` is true; for a live run, poll again after a short delay.
+Pages contain up to 100 lines, default to 50, and stop at roughly 1 MiB of
+log text. The run listings also support `limit` (1–100, default 50) and
+`offset`, and return `has_more` and `next_offset`. Runs are listed newest
+first; newly created runs can shift offsets while you paginate.
+
+Tool results contain `status`, `data`, and, when relevant, `location` and
+`message`. Validation and permission failures set MCP `isError`.
+A successful mutation commonly returns status `303` and the resulting
+portal location. Do not automatically repeat mutations after a network
+timeout: check whether the target, invitation, or run was created first.
+
+## Revoke a connection
+
+Open **Account settings → Manage agent connections (MCP)** and select
+**Revoke connection**. You can also use `revoke_agent_connection` with
+`keel:full`. Revocation prevents subsequent requests using that connection's
+access or refresh tokens. It does not cancel runs already started.
+
+Access tokens last up to 15 minutes. Refresh tokens rotate on use; the
+connection expires 30 days after authorization, at which point you must
+sign in and approve it again. Reusing an already consumed refresh token
+or authorization code revokes the connection. Clients should serialize
+refresh attempts instead of refreshing concurrently.
+
+Changing your password revokes all your agent connections and signs out
+other browser sessions. Browser logout alone does not revoke agents.
+
+## Hosting and client compatibility
+
+- Serve `/mcp`, `/oauth/*`, and `/.well-known/*` on the same public origin
+  as the portal. Preserve the public `Host` header and the `Authorization`
+  header through your reverse proxy. Keel rejects MCP requests whose host
+  does not match `KEEL_BASE_URL`.
+- Browser MCP requests must come from that same origin. Native clients and
+  server-side connectors can connect without an `Origin` header; arbitrary
+  browser origins are rejected.
+- Transport is stateless Streamable HTTP with JSON responses. Dedicated
+  SSE sessions and the older HTTP+SSE transport are not exposed. Poll logs
+  with `get_run_logs`. Protocol versions are negotiated by the MCP SDK,
+  including compatibility with `2025-11-25` clients.
+- The authorization and token requests must use the exact resource
+  `https://keel.example.com/mcp`. Tokens are bound to this resource and the
+  registered client. Redirect URIs must match registration exactly and use
+  HTTPS or HTTP loopback addresses. Only S256 PKCE is accepted.
+- Dynamic client registration is supported. Client ID metadata URLs,
+  client credentials grants, password grants, and static API keys are not.
+- Requests to `/mcp` are limited to 1 MiB. Each connection allows 240 HTTP
+  requests per minute. Registration allows 10 requests per minute per
+  direct peer IP; authorization submissions allow 30; token and revocation
+  endpoints each allow 120. Global limits are 100 times those IP limits.
+  Proxy-forwarded IP headers are not trusted, so users behind the same
+  proxy share these IP quotas. A limit response returns `429` and
+  `Retry-After: 60`.
+- Credentials and revocations persist across restarts. Keep the external
+  base URL stable: changing it invalidates the audience of existing tokens.
+- Keel records the user, connection, tool name, timestamp, and status for
+  MCP calls, retaining these audit records for 90 days. Arguments, tokens,
+  log content, and tool results are excluded from this audit trail.
+
+A `401` from `/mcp` includes a `WWW-Authenticate` discovery challenge. A
+`403` tool result means the scope or your current organization permission
+does not allow the action. For `invalid_grant`, reconnect if the connection
+expired or a code or refresh token was already consumed.
+
+See [self-hosting](/cloud/self-hosting),
+[organizations and permissions](/cloud/organizations-and-permissions), and
+[runs and security](/cloud/runs-and-security) for the underlying portal behavior.

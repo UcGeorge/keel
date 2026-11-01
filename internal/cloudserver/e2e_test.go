@@ -236,7 +236,7 @@ func TestCloudEndToEnd(t *testing.T) {
 
 	cfg := Config{
 		DatabaseURL: dbURL,
-		BaseURL:     "http://keel.test",
+		BaseURL:     "http://localhost:8080",
 		DataDir:     t.TempDir(),
 	}
 	srv, err := New(context.Background(), cfg, version.Version)
@@ -527,7 +527,7 @@ func TestCloudEndToEnd(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("invite code %d", code)
 	}
-	linkRe := regexp.MustCompile(`http://keel\.test(/invites/[A-Za-z0-9_-]+)`)
+	linkRe := regexp.MustCompile(regexp.QuoteMeta(cfg.BaseURL) + `(/invites/[A-Za-z0-9_-]+)`)
 	lm := linkRe.FindStringSubmatch(body)
 	if lm == nil {
 		t.Fatalf("no invite link on page:\n%.600s", body)

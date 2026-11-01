@@ -66,6 +66,10 @@ func NewRenderer() (*Renderer, error) {
 // Render writes a full page. Pages are rendered to a buffer first so a
 // template error can never emit a half-written response.
 func (r *Renderer) Render(w http.ResponseWriter, status int, page string, data any) {
+	if machine, ok := w.(interface{ RenderData(int, any) }); ok {
+		machine.RenderData(status, data)
+		return
+	}
 	t, ok := r.pages[page]
 	if !ok {
 		slog.Error("unknown template page", "page", page)
@@ -86,6 +90,10 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, data a
 // RenderFragment writes one named sub-template of a page (an htmx partial
 // response or an SSE payload), buffered like Render.
 func (r *Renderer) RenderFragment(w http.ResponseWriter, page, name string, data any) {
+	if machine, ok := w.(interface{ RenderData(int, any) }); ok {
+		machine.RenderData(http.StatusOK, data)
+		return
+	}
 	html, err := r.FragmentHTML(page, name, data)
 	if err != nil {
 		slog.Error("render fragment", "page", page, "name", name, "err", err)

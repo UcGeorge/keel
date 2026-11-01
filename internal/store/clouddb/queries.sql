@@ -395,3 +395,117 @@ ON CONFLICT (run_id) DO UPDATE SET
 
 -- name: GetRunInsight :one
 SELECT * FROM run_insights WHERE run_id = $1;
+
+-- MCP OAuth ------------------------------------------------------------------
+
+-- name: CreateMCPClient :exec
+INSERT INTO mcp_clients (id, name, redirect_uris) VALUES ($1, $2, $3);
+
+-- name: GetMCPClient :one
+SELECT * FROM mcp_clients WHERE id = $1 AND expires_at > now();
+
+-- name: TouchMCPClient :exec
+UPDATE mcp_clients SET expires_at = now() + interval '90 days' WHERE id = $1;
+
+-- name: CreateMCPGrant :one
+INSERT INTO mcp_grants (user_id, client_id, resource, scope, expires_at)
+VALUES ($1, $2, $3, $4, $5) RETURNING *;
+
+-- name: LockMCPGrant :one
+SELECT * FROM mcp_grants
+WHERE id = $1 AND revoked_at IS NULL AND expires_at > now() FOR UPDATE;
+
+-- name: CreateMCPCode :exec
+INSERT INTO mcp_codes (hash, grant_id, redirect_uri, challenge, expires_at) VALUES ($1, $2, $3, $4, $5);
+
+-- name: GetMCPCode :one
+SELECT * FROM mcp_codes WHERE hash = $1;
+
+-- name: GetMCPToken :one
+SELECT * FROM mcp_tokens WHERE hash = $1;
+
+-- name: ConsumeMCPCode :exec
+UPDATE mcp_codes SET used_at = now() WHERE hash = $1;
+
+-- name: ConsumeMCPToken :exec
+UPDATE mcp_tokens SET used_at = now() WHERE hash = $1;
+
+-- name: CreateMCPToken :exec
+INSERT INTO mcp_tokens (hash, grant_id, kind, expires_at) VALUES ($1, $2, $3, $4);
+
+-- name: AuthenticateMCPToken :one
+SELECT g.user_id, g.id AS grant_id, g.scope
+FROM mcp_tokens t JOIN mcp_grants g ON g.id = t.grant_id
+WHERE t.hash = $1 AND t.kind = 'access' AND t.expires_at > now()
+  AND g.revoked_at IS NULL AND g.expires_at > now() AND g.resource = $2;
+
+-- name: RevokeMCPGrant :exec
+UPDATE mcp_grants SET revoked_at = now() WHERE id = $1;
+
+-- name: RevokeMCPGrantForUser :exec
+UPDATE mcp_grants SET revoked_at = now() WHERE id = $1 AND user_id = $2;
+
+-- name: RevokeUserMCPGrants :exec
+UPDATE mcp_grants SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL;
+
+-- name: RevokeMCPTokenFamily :exec
+UPDATE mcp_grants SET revoked_at = now()
+WHERE client_id = $1 AND id IN (SELECT grant_id FROM mcp_tokens WHERE hash = $2);
+
+-- name: ListMCPConnections :many
+SELECT g.id, c.name, g.scope, g.created_at, g.expires_at
+FROM mcp_grants g JOIN mcp_clients c ON c.id = g.client_id
+WHERE g.user_id = $1 AND g.revoked_at IS NULL AND g.expires_at > now()
+ORDER BY g.created_at DESC;
+
+-- name: IncrementMCPRateLimit :one
+INSERT INTO mcp_rate_limits (bucket, hits) VALUES ($1, 1)
+ON CONFLICT (bucket) DO UPDATE SET
+  hits = CASE WHEN mcp_rate_limits.starts_at < now() - interval '1 minute'
+         THEN 1 ELSE mcp_rate_limits.hits + 1 END,
+  starts_at = CASE WHEN mcp_rate_limits.starts_at < now() - interval '1 minute'
+               THEN now() ELSE mcp_rate_limits.starts_at END
+RETURNING hits;
+
+-- name: DeleteExpiredMCPClients :exec
+DELETE FROM mcp_clients WHERE expires_at < now();
+
+-- name: DeleteExpiredMCPGrants :exec
+DELETE FROM mcp_grants WHERE expires_at < now();
+
+-- name: DeleteExpiredMCPCodes :exec
+DELETE FROM mcp_codes WHERE expires_at < now() - interval '1 day';
+
+-- name: DeleteExpiredMCPAccessTokens :exec
+DELETE FROM mcp_tokens WHERE kind = 'access' AND expires_at < now();
+
+-- name: DeleteExpiredMCPRateLimits :exec
+DELETE FROM mcp_rate_limits WHERE starts_at < now() - interval '1 hour';
+
+-- name: DeleteExpiredMCPAudit :exec
+DELETE FROM mcp_audit WHERE created_at < now() - interval '90 days';
+
+-- name: InsertMCPAudit :exec
+INSERT INTO mcp_audit (user_id, grant_id, tool, status) VALUES ($1, $2, $3, $4);
+
+-- name: ListMCPOrgsForUser :many
+SELECT o.id, o.slug, o.name, o.personal, m.role, m.can_configure, m.can_deploy
+FROM orgs o JOIN org_members m ON m.org_id = o.id
+WHERE m.user_id = $1 ORDER BY o.personal DESC, o.name, o.id;
+
+-- name: ListRunLogsPage :many
+SELECT seq, line FROM run_logs WHERE run_id = $1 AND seq > $2 ORDER BY seq LIMIT $3;
+
+-- name: ListRepoRunIDsPage :many
+SELECT runs.id, repos.name AS repo_name FROM runs JOIN repos ON repos.id = runs.repo_id
+WHERE runs.repo_id = $1 ORDER BY runs.created_at DESC, runs.id DESC LIMIT $2 OFFSET $3;
+
+-- name: ListOrgRunIDsPage :many
+SELECT runs.id, repos.name AS repo_name FROM runs JOIN repos ON repos.id = runs.repo_id
+WHERE repos.org_id = $1 ORDER BY runs.created_at DESC, runs.id DESC LIMIT $2 OFFSET $3;
+
+-- name: LockUserForMCPApproval :one
+SELECT id FROM users WHERE id = $1 FOR UPDATE;
+
+-- name: GetSessionForMCPApproval :one
+SELECT id FROM sessions WHERE id = $1 AND user_id = $2 AND expires_at > now();

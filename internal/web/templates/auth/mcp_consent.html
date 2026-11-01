@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="mx-auto mt-10 w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-8 shadow-sm">
+  <h1 class="text-xl font-semibold tracking-tight text-slate-900">Connect an agent to Keel</h1>
+  <p class="mt-4 text-sm text-slate-600"><strong>{{.ClientName}}</strong> requests access as <strong>{{.User.Name}}</strong> on <code>{{.Issuer}}</code>.</p>
+  {{if .Full}}
+  <p class="mt-4 rounded-md bg-amber-50 p-4 text-sm text-amber-900">This connection can perform every portal action your permissions allow: change configuration and credentials, deploy or cancel runs, manage members, and delete resources. It can read sensitive deployment outputs available to you.</p>
+  {{else}}
+  <p class="mt-4 text-sm text-slate-600">This connection can read your organizations, repositories, targets, values, runs and logs. It cannot change settings or start deployments. Sensitive outputs you can view in the portal are also available.</p>
+  {{end}}
+  <p class="mt-4 text-sm text-slate-600">The app name is supplied by its developer. Approve only an app you trust. The authorization code returns to:</p>
+  <p class="mt-2 break-all rounded-md bg-slate-50 p-3 text-sm"><code>{{.RedirectURI}}</code></p>
+  <p class="mt-4 text-sm text-slate-600">Access lasts up to 30 days. Revoke it at any time in <a href="/account/agents" class="text-teal-700 hover:underline">Agent connections</a>.</p>
+  <form method="post" action="/oauth/authorize" class="mt-6 flex gap-3">
+    {{template "csrf_field" .CSRF}}
+    {{range $key, $values := .Fields}}{{range $values}}<input type="hidden" name="{{$key}}" value="{{.}}">{{end}}{{end}}
+    <button name="decision" value="allow" class="rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700">Authorize connection</button>
+    <button name="decision" value="deny" class="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Deny</button>
+  </form>
+</div>
+{{end}}
