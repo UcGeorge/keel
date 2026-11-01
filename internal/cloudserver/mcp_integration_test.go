@@ -115,6 +115,15 @@ func (f *mcpFixture) authorize(b *browser, scope string) (code, verifier string,
 	if status != 200 || !strings.Contains(body, "Authorize connection") {
 		f.t.Fatalf("consent: %d %s", status, body)
 	}
+	// The browser submits one explicit radio choice, even when a client requested
+	// both scopes or omitted scope in its authorization URL.
+	selected := mcpauth.ReadScope
+	for _, requested := range strings.Fields(scope) {
+		if requested == mcpauth.FullScope {
+			selected = mcpauth.FullScope
+		}
+	}
+	form.Set("scope", selected)
 	form.Set("_csrf", b.csrf("/account"))
 	form.Set("decision", "allow")
 	client := &http.Client{Jar: b.c.Jar, Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -479,15 +488,33 @@ func TestMCPOAuthSecurity(t *testing.T) {
 	browserClient := &http.Client{Jar: f.owner.c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	badConsent := cloneForm(consent)
 	badConsent.Del("_csrf")
-	resp, _ := f.request("POST", "/oauth/authorize", "", badConsent.Encode(), "application/x-www-form-urlencoded", browserClient)
-	if resp.StatusCode != 403 {
-		t.Fatal("CSRF-less consent accepted")
+	for _, decision := range []string{"allow", "deny"} {
+		badConsent.Set("decision", decision)
+		resp, _ := f.request("POST", "/oauth/authorize", "", badConsent.Encode(), "application/x-www-form-urlencoded", browserClient)
+		if resp.StatusCode != 403 || resp.Header.Get("Location") != "" {
+			t.Fatalf("CSRF-less %s consent accepted", decision)
+		}
+	}
+	for _, scopes := range [][]string{nil, {""}, {"admin"}, {"keel:read keel:full"}, {"keel:read", "keel:full"}} {
+		badConsent = cloneForm(consent)
+		badConsent["scope"] = scopes
+		resp, _ := f.request("POST", "/oauth/authorize", "", badConsent.Encode(), "application/x-www-form-urlencoded", browserClient)
+		if resp.StatusCode != 400 || resp.Header.Get("Location") != "" {
+			t.Fatal("invalid consent scope selection accepted")
+		}
 	}
 	badConsent = cloneForm(consent)
 	badConsent.Set("redirect_uri", "https://attacker.example/callback")
-	resp, _ = f.request("GET", "/oauth/authorize?"+badConsent.Encode(), "", "", "", browserClient)
+	resp, _ := f.request("GET", "/oauth/authorize?"+badConsent.Encode(), "", "", "", browserClient)
 	if resp.StatusCode != 400 || resp.Header.Get("Location") != "" {
 		t.Fatal("unregistered redirect accepted")
+	}
+	for _, decision := range []string{"allow", "deny"} {
+		badConsent.Set("decision", decision)
+		resp, _ = f.request("POST", "/oauth/authorize", "", badConsent.Encode(), "application/x-www-form-urlencoded", browserClient)
+		if resp.StatusCode != 400 || resp.Header.Get("Location") != "" {
+			t.Fatalf("unregistered redirect accepted on %s", decision)
+		}
 	}
 	badConsent = cloneForm(consent)
 	badConsent.Set("decision", "deny")

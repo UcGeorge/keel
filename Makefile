@@ -1,7 +1,7 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS  = -X github.com/UcGeorge/keel/internal/version.Version=$(VERSION)
 
-.PHONY: build build-keel build-cloud css sqlc test test-short vet fmt run-cloud embed docs site clean
+.PHONY: build build-keel build-cloud css sqlc test test-short test-browser vet fmt run-cloud embed docs site clean
 
 ## build: compile both binaries into ./bin
 build: build-keel build-cloud
@@ -27,6 +27,10 @@ test:
 ## test-short: fast tests only (no Docker, no PostgreSQL)
 test-short:
 	go test ./... -short
+
+## test-browser: OAuth browser regression (requires Docker/PostgreSQL, npm ci, npx playwright install chromium)
+test-browser:
+	KEEL_TEST_BROWSER=1 go test ./internal/cloudserver -run '^TestMCPConsentBrowser$$' -count=1 -timeout 120s
 
 vet:
 	go vet ./...

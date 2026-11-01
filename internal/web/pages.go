@@ -441,5 +441,6 @@ type MCPConnectionVM struct {
 type PageMCPConnections struct {
 	Base        `json:"-"`
 	Resource    string
+	Updated     bool
 	Connections []MCPConnectionVM
 }

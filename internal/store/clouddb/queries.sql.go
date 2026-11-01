@@ -2656,6 +2656,34 @@ func (q *Queries) TouchMCPClient(ctx context.Context, id string) error {
 	return err
 }
 
+const updateMCPGrantScopeForUser = `-- name: UpdateMCPGrantScopeForUser :one
+UPDATE mcp_grants SET scope = $3
+WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+RETURNING id, user_id, client_id, resource, scope, created_at, expires_at, revoked_at
+`
+
+type UpdateMCPGrantScopeForUserParams struct {
+	ID     uuid.UUID
+	UserID uuid.UUID
+	Scope  string
+}
+
+func (q *Queries) UpdateMCPGrantScopeForUser(ctx context.Context, arg UpdateMCPGrantScopeForUserParams) (*McpGrant, error) {
+	row := q.db.QueryRow(ctx, updateMCPGrantScopeForUser, arg.ID, arg.UserID, arg.Scope)
+	var i McpGrant
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ClientID,
+		&i.Resource,
+		&i.Scope,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return &i, err
+}
+
 const updateOrgMember = `-- name: UpdateOrgMember :one
 UPDATE org_members SET role = $3, can_configure = $4, can_deploy = $5
 WHERE org_id = $1 AND user_id = $2

@@ -127,7 +127,7 @@ func (s *Server) callMCP(ctx context.Context, portal http.Handler, op mcpOperati
 	}()
 	if op.Method != "GET" && p.Scope != mcpauth.FullScope {
 		status = 403
-		return toolResult(mcpResult{Status: 403, Message: "This action requires keel:full. Reconnect and approve full access."}, true)
+		return toolResult(mcpResult{Status: 403, Message: "This connection has read-only access. Its owner can select Full access in Account settings → Manage agent connections (MCP), or reconnect and choose Full access."}, true)
 	}
 	path, form, err := op.decode(args)
 	if err != nil {
