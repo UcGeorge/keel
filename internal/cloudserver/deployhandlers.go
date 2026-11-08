@@ -26,6 +26,7 @@ func (s *Server) repoDep(w http.ResponseWriter, r *http.Request, rc *repoCtx) *c
 		s.errorPage(w, r, rc.Sess, http.StatusNotFound, fmt.Sprintf("No deployment named %q in this repository's keel.yaml", r.PathValue("dep")))
 		return nil
 	}
+	auditSubject(r.Context(), "Deployment", uuid.Nil, rc.Repo.Name+" / "+d.Name)
 	return d
 }
 
@@ -38,7 +39,16 @@ func (s *Server) pathTarget(w http.ResponseWriter, r *http.Request, rc *repoCtx,
 		s.errorPage(w, r, rc.Sess, http.StatusNotFound, fmt.Sprintf("No target named %q for deployment %q", r.PathValue("target"), d.Name))
 		return nil
 	}
+	auditTarget(r.Context(), rc.Repo, t)
 	return t
+}
+
+func targetAuditName(repo, deployment, target string) string {
+	return repo + " / " + deployment + " / " + target
+}
+
+func auditTarget(ctx context.Context, repo *clouddb.Repo, target *clouddb.Target) {
+	auditSubject(ctx, "Target", target.ID, targetAuditName(repo.Name, target.Deployment, target.Name))
 }
 
 func (s *Server) depURL(rc *repoCtx, dep string) string {
@@ -203,11 +213,25 @@ func (s *Server) handleTargetCreate(w http.ResponseWriter, r *http.Request, rc *
 		s.renderDeployment(w, r, rc, d, form, http.StatusUnprocessableEntity)
 		return
 	}
-	_, err := s.Q.CreateTarget(r.Context(), clouddb.CreateTargetParams{
-		RepoID: rc.Repo.ID, Deployment: d.Name, Name: name, Description: desc,
-		AutoDeploy: autoDeploy, CreatedBy: nullUUID(rc.Sess.UserID),
+	ctx := r.Context()
+	err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		target, err := q.CreateTarget(ctx, clouddb.CreateTargetParams{
+			RepoID: rc.Repo.ID, Deployment: d.Name, Name: name, Description: desc,
+			AutoDeploy: autoDeploy, CreatedBy: nullUUID(rc.Sess.UserID),
+		})
+		if err == nil {
+			auditTarget(ctx, rc.Repo, target)
+			if target.AutoDeploy {
+				auditResult(ctx, auditSucceeded, "Automatic deployment enabled")
+			}
+		}
+		return err
 	})
 	if err != nil {
+		if !uniqueViolation(err) {
+			s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not create the target")
+			return
+		}
 		form.NameError = fmt.Sprintf("A target named %q already exists for this deployment.", name)
 		s.renderDeployment(w, r, rc, d, form, http.StatusUnprocessableEntity)
 		return
@@ -381,38 +405,61 @@ func (s *Server) handleValuesSave(w http.ResponseWriter, r *http.Request, rc *re
 		}
 		updates = append(updates, pending{name: v.Name, value: value, secret: v.Secret})
 	}
-	for _, u := range updates {
-		if u.value == "" {
-			if err := s.Q.DeleteTargetValue(r.Context(), clouddb.DeleteTargetValueParams{TargetID: t.ID, VarName: u.name}); err != nil {
-				s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not save values")
-				return
+	ctx := r.Context()
+	var changed []string
+	if len(updates) > 0 {
+		err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+			for _, u := range updates {
+				if u.value == "" {
+					rows, err := q.DeleteTargetValue(ctx, clouddb.DeleteTargetValueParams{TargetID: t.ID, VarName: u.name})
+					if err != nil {
+						return err
+					}
+					if rows > 0 {
+						changed = append(changed, u.name+" (cleared)")
+					}
+					continue
+				}
+				enc, err := s.Box.SealString(u.value)
+				if err != nil {
+					return err
+				}
+				if err := q.UpsertTargetValue(ctx, clouddb.UpsertTargetValueParams{
+					TargetID: t.ID, VarName: u.name, ValueEnc: enc, IsSecret: u.secret,
+					UpdatedBy: nullUUID(rc.Sess.UserID),
+				}); err != nil {
+					return err
+				}
+				if u.secret {
+					changed = append(changed, u.name+" (secret)")
+				} else {
+					changed = append(changed, u.name)
+				}
 			}
-			continue
-		}
-		enc, err := s.Box.SealString(u.value)
+			outcome, detail := auditNoChange, "No values changed"
+			if len(changed) > 0 {
+				outcome, detail = auditSucceeded, "Changed: "+strings.Join(changed, ", ")
+			}
+			if len(fieldErrors) > 0 {
+				outcome = auditFailed
+				if len(changed) > 0 {
+					outcome = auditPartial
+				}
+				detail = fmt.Sprintf("%d invalid field(s) · %s", len(fieldErrors), detail)
+			}
+			auditResult(ctx, outcome, detail)
+			return nil
+		})
 		if err != nil {
-			s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not encrypt value")
-			return
-		}
-		if err := s.Q.UpsertTargetValue(r.Context(), clouddb.UpsertTargetValueParams{
-			TargetID: t.ID, VarName: u.name, ValueEnc: enc, IsSecret: u.secret,
-			UpdatedBy: nullUUID(rc.Sess.UserID),
-		}); err != nil {
 			s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not save values")
 			return
 		}
+	} else if len(fieldErrors) == 0 {
+		auditResult(ctx, auditNoChange, "No values changed")
 	}
-	if len(updates) > 0 {
-		var changed []string
-		for _, u := range updates {
-			if u.secret {
-				changed = append(changed, u.name+" (secret)")
-			} else {
-				changed = append(changed, u.name)
-			}
-		}
+	if len(changed) > 0 {
 		s.publishTargetEvent(rc, notify.TargetValuesChanged, d.Name, t.Name,
-			fmt.Sprintf("%d variable value(s) were saved on the target.", len(updates)),
+			fmt.Sprintf("%d variable value(s) were changed on the target.", len(changed)),
 			notify.Fact{Label: "Changed", Value: strings.Join(changed, ", ")})
 	}
 	// Valid values are persisted even when some fields fail — the re-rendered
@@ -447,9 +494,35 @@ func (s *Server) handleTargetUpdate(w http.ResponseWriter, r *http.Request, rc *
 		http.Redirect(w, r, s.targetURL(rc, d.Name, t.Name), http.StatusSeeOther)
 		return
 	}
-	if _, err := s.Q.UpdateTarget(r.Context(), clouddb.UpdateTargetParams{
-		ID: t.ID, Name: name, Description: desc, AutoDeploy: autoDeploy,
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		target, err := q.UpdateTarget(ctx, clouddb.UpdateTargetParams{
+			ID: t.ID, Name: name, Description: desc, AutoDeploy: autoDeploy,
+		})
+		if err == nil {
+			auditTarget(ctx, rc.Repo, target)
+			var changes []string
+			if target.Name != t.Name {
+				changes = append(changes, "Previous name: "+t.Name)
+			}
+			if target.Description != t.Description {
+				changes = append(changes, "Description changed")
+			}
+			if target.AutoDeploy != t.AutoDeploy {
+				if target.AutoDeploy {
+					changes = append(changes, "Automatic deployment enabled")
+				} else {
+					changes = append(changes, "Automatic deployment disabled")
+				}
+			}
+			auditResult(ctx, auditSucceeded, strings.Join(changes, " · "))
+		}
+		return err
 	}); err != nil {
+		if !uniqueViolation(err) {
+			s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not update the target")
+			return
+		}
 		web.SetFlash(w, "error", fmt.Sprintf("A target named %q already exists.", name))
 		http.Redirect(w, r, s.targetURL(rc, d.Name, t.Name), http.StatusSeeOther)
 		return
@@ -472,7 +545,10 @@ func (s *Server) handleTargetDelete(w http.ResponseWriter, r *http.Request, rc *
 	if t == nil {
 		return
 	}
-	if err := s.Q.DeleteTarget(r.Context(), t.ID); err != nil {
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return requireAuditRow(q.DeleteTarget(ctx, t.ID))
+	}); err != nil {
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not delete the target")
 		return
 	}

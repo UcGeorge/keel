@@ -176,15 +176,30 @@ func (s *Server) handleRepoCreate(w http.ResponseWriter, r *http.Request, oc *or
 	params.Name = name
 	params.Branch = branch
 	params.CreatedBy = nullUUID(oc.Sess.UserID)
-	repo, err := s.Q.CreateRepo(r.Context(), params)
+	ctx := r.Context()
+	var repo *clouddb.Repo
+	err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		created, err := q.CreateRepo(ctx, params)
+		if err == nil {
+			repo = created
+			auditSubject(ctx, "Repository", repo.ID, repo.Name)
+		}
+		return err
+	})
 	if err != nil {
+		if !uniqueViolation(err) {
+			s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not connect the repository")
+			return
+		}
 		page.Errors["name"] = fmt.Sprintf("A repository named %q is already connected to this organization.", name)
 		s.renderRepoNew(w, r, oc, page, http.StatusUnprocessableEntity)
 		return
 	}
 
 	// First sync happens synchronously so the user lands on a meaningful page.
-	s.syncRepo(r.Context(), repo)
+	if err := s.syncRepo(ctx, repo, nil); err != nil {
+		slog.Error("initial repository sync", "repo", repo.ID, "err", err)
+	}
 	if fresh, err := s.Q.GetRepo(r.Context(), repo.ID); err == nil {
 		s.publishRepoEvent(oc, notify.RepoConnected, fresh, "A repository was connected and its keel.yaml read for the first time.")
 	}
@@ -228,13 +243,29 @@ func (s *Server) repoAuth(repo *clouddb.Repo) (*gitutil.Auth, error) {
 }
 
 // syncRepo clones the repository and refreshes its stored configuration.
-func (s *Server) syncRepo(ctx context.Context, repo *clouddb.Repo) {
+// A direct sync or push is audited; connect and settings changes already
+// have an event for the action that triggered their follow-up sync.
+func (s *Server) syncRepo(ctx context.Context, repo *clouddb.Repo, event *auditEvent) error {
 	status, cfgYAML, cfgErr, sha := s.fetchConfig(ctx, repo)
-	if err := s.Q.UpdateRepoSync(ctx, clouddb.UpdateRepoSyncParams{
-		ID: repo.ID, Status: status, ConfigYaml: cfgYAML, ConfigError: cfgErr, LastCommitSha: sha,
-	}); err != nil {
-		slog.Error("update repo sync", "repo", repo.ID, "err", err)
+	save := func(q *clouddb.Queries) error {
+		return requireAuditRow(q.UpdateRepoSync(ctx, clouddb.UpdateRepoSyncParams{
+			ID: repo.ID, Status: status, ConfigYaml: cfgYAML, ConfigError: cfgErr, LastCommitSha: sha,
+		}))
 	}
+	if event == nil {
+		return save(s.Q)
+	}
+	switch status {
+	case "ok":
+		event.Detail = "Configuration refreshed"
+	case "config_missing":
+		event.Outcome, event.Detail = auditFailed, "No keel.yaml found"
+	case "config_invalid":
+		event.Outcome, event.Detail = auditFailed, "Invalid keel.yaml"
+	default:
+		event.Outcome, event.Detail = auditFailed, "Repository could not be read"
+	}
+	return s.auditedChange(ctx, event, save)
 }
 
 func (s *Server) fetchConfig(ctx context.Context, repo *clouddb.Repo) (status, cfgYAML, cfgErr, sha string) {
@@ -319,7 +350,10 @@ func (s *Server) handleRepoSync(w http.ResponseWriter, r *http.Request, rc *repo
 		s.errorPage(w, r, rc.Sess, http.StatusForbidden, "You don't have permission to sync this repository")
 		return
 	}
-	s.syncRepo(r.Context(), rc.Repo)
+	if err := s.syncRepo(r.Context(), rc.Repo, requestAudit(r.Context())); err != nil {
+		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not sync the repository")
+		return
+	}
 	if fresh, err := s.Q.GetRepo(r.Context(), rc.Repo.ID); err == nil {
 		s.publishRepoEvent(rc.orgCtx, notify.RepoSynced, fresh, "The repository was synced by hand and its configuration re-read.")
 	}
@@ -381,15 +415,47 @@ func (s *Server) handleRepoSettingsSave(w http.ResponseWriter, r *http.Request, 
 	if r.PostFormValue("clear_token") == "true" {
 		tokenEnc = nil
 	}
-	updated, err := s.Q.UpdateRepoSettings(r.Context(), clouddb.UpdateRepoSettingsParams{
-		ID: rc.Repo.ID, Name: name, Branch: branch, GitUrl: gitURL, AuthTokenEnc: tokenEnc,
+	ctx := r.Context()
+	var updated *clouddb.Repo
+	err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		repo, err := q.UpdateRepoSettings(ctx, clouddb.UpdateRepoSettingsParams{
+			ID: rc.Repo.ID, Name: name, Branch: branch, GitUrl: gitURL, AuthTokenEnc: tokenEnc,
+		})
+		if err == nil {
+			updated = repo
+			auditSubject(ctx, "Repository", repo.ID, repo.Name)
+			var changes []string
+			if repo.Name != rc.Repo.Name {
+				changes = append(changes, "Previous name: "+rc.Repo.Name)
+			}
+			if repo.Branch != rc.Repo.Branch {
+				changes = append(changes, "Branch changed")
+			}
+			if repo.GitUrl != rc.Repo.GitUrl {
+				changes = append(changes, "Git URL changed")
+			}
+			switch {
+			case len(tokenEnc) == 0 && len(rc.Repo.AuthTokenEnc) > 0:
+				changes = append(changes, "Git token removed")
+			case token != "" && len(tokenEnc) > 0:
+				changes = append(changes, "Git token saved")
+			}
+			auditResult(ctx, auditSucceeded, strings.Join(changes, " · "))
+		}
+		return err
 	})
 	if err != nil {
+		if !uniqueViolation(err) {
+			s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not save repository settings")
+			return
+		}
 		web.SetFlash(w, "error", fmt.Sprintf("A repository named %q already exists in this organization.", name))
 		http.Redirect(w, r, rc.repoURL()+"/settings", http.StatusSeeOther)
 		return
 	}
-	s.syncRepo(r.Context(), updated)
+	if err := s.syncRepo(ctx, updated, nil); err != nil {
+		slog.Error("repository sync after settings change", "repo", updated.ID, "err", err)
+	}
 	if fresh, err := s.Q.GetRepo(r.Context(), updated.ID); err == nil {
 		s.publishRepoEvent(rc.orgCtx, notify.RepoSynced, fresh, "Repository settings were saved and the configuration re-read.")
 	}
@@ -408,7 +474,10 @@ func (s *Server) handleRepoDelete(w http.ResponseWriter, r *http.Request, rc *re
 		http.Redirect(w, r, rc.repoURL()+"/settings", http.StatusSeeOther)
 		return
 	}
-	if err := s.Q.DeleteRepo(r.Context(), rc.Repo.ID); err != nil {
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return requireAuditRow(q.DeleteRepo(ctx, rc.Repo.ID))
+	}); err != nil {
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not disconnect the repository")
 		return
 	}
@@ -490,7 +559,12 @@ func (s *Server) handlePush(ctx context.Context, ev *githubapp.PushEvent) {
 		if repo.Branch != branch {
 			continue
 		}
-		s.syncRepo(ctx, repo)
+		event := githubPushAudit(repo, ev, "repository.sync")
+		if err := s.syncRepo(ctx, repo, event); err != nil {
+			slog.Error("webhook: sync repository", "repo", repo.ID, "err", err)
+			s.recordObservedAudit(event)
+			continue
+		}
 		fresh, err := s.Q.GetRepo(ctx, repo.ID)
 		if err != nil {
 			continue
@@ -522,11 +596,25 @@ func (s *Server) handlePush(ctx context.Context, ev *githubapp.PushEvent) {
 			if d == nil {
 				continue
 			}
-			if err := s.autoDeploy(ctx, fresh, d, t, ev.After); err != nil {
+			if err := s.autoDeploy(ctx, fresh, d, t, ev.After, githubPushAudit(fresh, ev, "run.deploy")); err != nil {
 				slog.Warn("webhook: auto-deploy failed to start", "repo", repo.Name, "target", t.Name, "err", err)
 			}
 		}
 	}
+}
+
+func githubPushAudit(repo *clouddb.Repo, ev *githubapp.PushEvent, action string) *auditEvent {
+	e := &auditEvent{InsertOrgAuditEventParams: clouddb.InsertOrgAuditEventParams{
+		OrgID: repo.OrgID, Action: action, Source: "github", ActorName: ev.Sender.Login,
+	}}
+	if e.ActorName == "" {
+		e.ActorName = "GitHub push"
+	}
+	if ev.Sender.ID > 0 {
+		e.ActorID = "github:" + strconv.FormatInt(ev.Sender.ID, 10)
+	}
+	e.subject("Repository", repo.ID, repo.Name)
+	return e
 }
 
 func pgInt8(v int64) pgtype.Int8 {

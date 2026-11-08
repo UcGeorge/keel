@@ -59,6 +59,7 @@ default follows the system preference):
 | Where | your machine, one repository | your server, many repositories |
 | State | `.keel/` in the repo (SQLite) | PostgreSQL |
 | Users | just you | organizations, roles, scopes, invites |
+| Audit log | — | organization activity across the browser, MCP, and GitHub pushes |
 | Repos | the directory you run it in | connected via git URL or GitHub App |
 | CI | — | push-triggered auto-deploys via GitHub App webhooks |
 | Notifications | — | email via your SMTP server, per-recipient event subscriptions |

@@ -2,6 +2,7 @@ package cloudserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
+	"github.com/jackc/pgx/v5"
 )
 
 const sessionTTL = 30 * 24 * time.Hour
@@ -120,16 +122,13 @@ func (s *Server) createPersonalOrg(ctx context.Context, user *clouddb.User) erro
 		if i > 0 {
 			slug = fmt.Sprintf("%s-%d", base, i+1)
 		}
-		org, err := s.Q.CreateOrg(ctx, clouddb.CreateOrgParams{
+		_, err := s.createOrganization(ctx, userAudit(ctx, user, nil, "organization.create"), clouddb.CreateOrgParams{
 			Slug: slug, Name: user.Name, Personal: true,
 			CreatedBy: nullUUID(user.ID),
 		})
-		if err != nil {
+		if uniqueViolation(err) {
 			continue // slug collision — try the next suffix
 		}
-		_, err = s.Q.CreateOrgMember(ctx, clouddb.CreateOrgMemberParams{
-			OrgID: org.ID, UserID: user.ID, Role: "owner", CanConfigure: true, CanDeploy: true,
-		})
 		return err
 	}
 	return fmt.Errorf("could not find a free slug for %q", base)
@@ -215,14 +214,23 @@ func (s *Server) handleInvitePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess := s.session(r)
-	page := web.PageInvite{
-		Base:      s.base(w, r, sess, nil, "Join "+org.Name),
-		OrgName:   org.Name,
-		Role:      invite.Role,
-		Token:     token,
-		NeedsAuth: sess == nil,
+	render := func(w http.ResponseWriter, r *http.Request) {
+		page := web.PageInvite{
+			Base:      s.base(w, r, sess, nil, "Join "+org.Name),
+			OrgName:   org.Name,
+			Role:      invite.Role,
+			Token:     token,
+			NeedsAuth: sess == nil,
+		}
+		s.Renderer.Render(w, http.StatusOK, "auth/invite.html", page)
 	}
-	s.Renderer.Render(w, http.StatusOK, "auth/invite.html", page)
+	if sess == nil {
+		render(w, r)
+		return
+	}
+	event := userAudit(r.Context(), sess.User, org, "membership.invite_view")
+	event.subject("Invitation", invite.ID, invite.Email)
+	s.observeAudit(w, r, event, render)
 }
 
 // handleInviteAccept adds the signed-in user to the org.
@@ -242,19 +250,41 @@ func (s *Server) handleInviteAccept(w http.ResponseWriter, r *http.Request) {
 		s.errorPage(w, r, sess, http.StatusNotFound, "This invite link is invalid or has expired")
 		return
 	}
-	if _, err := s.Q.GetOrgMember(r.Context(), clouddb.GetOrgMemberParams{OrgID: org.ID, UserID: sess.UserID}); err == nil {
+	event := userAudit(r.Context(), sess.User, org, "membership.accept")
+	event.subject("Invitation", invite.ID, invite.Email)
+	s.observeAudit(w, r, event, func(w http.ResponseWriter, r *http.Request) {
+		s.acceptInvite(w, r, sess, org, invite)
+	})
+}
+
+func (s *Server) acceptInvite(w http.ResponseWriter, r *http.Request, sess *sessionInfo, org *clouddb.Org, invite *clouddb.OrgInvite) {
+	ctx := r.Context()
+	if _, err := s.Q.GetOrgMember(ctx, clouddb.GetOrgMemberParams{OrgID: org.ID, UserID: sess.UserID}); err == nil {
+		auditResult(ctx, auditNoChange, "Already a member")
 		web.SetFlash(w, "info", "You are already a member of "+org.Name+".")
 		http.Redirect(w, r, "/orgs/"+org.Slug, http.StatusSeeOther)
 		return
 	}
-	if _, err := s.Q.CreateOrgMember(r.Context(), clouddb.CreateOrgMemberParams{
-		OrgID: org.ID, UserID: sess.UserID, Role: invite.Role,
-		CanConfigure: invite.CanConfigure, CanDeploy: invite.CanDeploy,
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		if err := requireAuditRow(q.AcceptInvite(ctx, invite.ID)); err != nil {
+			return err
+		}
+		_, err := q.CreateOrgMember(ctx, clouddb.CreateOrgMemberParams{
+			OrgID: org.ID, UserID: sess.UserID, Role: invite.Role,
+			CanConfigure: invite.CanConfigure, CanDeploy: invite.CanDeploy,
+		})
+		if err == nil {
+			auditResult(ctx, auditSucceeded, auditPermissions(invite.Role, invite.CanConfigure, invite.CanDeploy))
+		}
+		return err
 	}); err != nil {
-		s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not join the organization")
+		if errors.Is(err, pgx.ErrNoRows) {
+			s.errorPage(w, r, sess, http.StatusNotFound, "This invite link is invalid or has expired")
+		} else {
+			s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not join the organization")
+		}
 		return
 	}
-	_ = s.Q.AcceptInvite(r.Context(), invite.ID)
 	s.publishMemberEvent(org, notify.MemberJoined, sess.User.Name+" <"+sess.User.Email+">", invite.Role, "")
 	web.SetFlash(w, "success", "Welcome to "+org.Name+"!")
 	http.Redirect(w, r, "/orgs/"+org.Slug, http.StatusSeeOther)

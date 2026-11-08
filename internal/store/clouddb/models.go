@@ -111,6 +111,23 @@ type OrgAiSetting struct {
 	UpdatedAt  time.Time
 }
 
+type OrgAuditEvent struct {
+	ID           int64
+	OrgID        uuid.UUID
+	OccurredAt   time.Time
+	ActorID      string
+	ActorName    string
+	ActorEmail   string
+	Source       string
+	Action       string
+	Category     string
+	Outcome      string
+	ResourceType string
+	ResourceID   uuid.NullUUID
+	ResourceName string
+	Detail       string
+}
+
 type OrgInvite struct {
 	ID           uuid.UUID
 	OrgID        uuid.UUID

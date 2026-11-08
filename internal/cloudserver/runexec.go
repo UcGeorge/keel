@@ -72,7 +72,7 @@ func (s *Server) handleDeploy(w http.ResponseWriter, r *http.Request, rc *repoCt
 		return
 	}
 
-	run, err := s.createRun(r.Context(), rc.Repo, d, t, "manual", "", nullUUID(rc.Sess.UserID), values)
+	run, err := s.createRun(r.Context(), rc.Repo, d, t, "manual", "", nullUUID(rc.Sess.UserID), values, requestAudit(r.Context()))
 	if err != nil {
 		s.errorPage(w, r, rc.Sess, http.StatusInternalServerError, "Could not create the run: "+err.Error())
 		return
@@ -107,12 +107,22 @@ func collectDeployValues(r *http.Request, d *config.Deployment) map[string]strin
 // autoDeploy starts a push-triggered run when the target is fully
 // configured. Deploy-time variables fall back to their defaults; a required
 // one without a default blocks the auto-deploy with a clear message.
-func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.Deployment, t *clouddb.Target, commitSHA string) error {
+func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.Deployment, t *clouddb.Target, commitSHA string, event *auditEvent) error {
+	event.subject("Target", t.ID, targetAuditName(repo.Name, d.Name, t.Name))
+	defer func() {
+		if !event.recorded {
+			if event.Outcome == "" {
+				event.Outcome = auditFailed
+			}
+			s.recordObservedAudit(event)
+		}
+	}()
 	values, _, err := s.targetValues(ctx, d, t.ID)
 	if err != nil {
 		return err
 	}
 	if problems := config.CheckValues(d, values); len(problems) > 0 {
+		event.Detail = "Target configuration is incomplete or invalid"
 		names := make([]string, len(problems))
 		for i, p := range problems {
 			names[i] = p.Name + " " + p.Message
@@ -120,9 +130,10 @@ func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.D
 		return fmt.Errorf("target %q is not ready: %s", t.Name, strings.Join(names, "; "))
 	}
 	if active, err := s.Q.CountActiveRunsForTarget(ctx, nullUUID(t.ID)); err == nil && active > 0 {
+		event.Outcome, event.Detail = auditNoChange, "Target already has an active run"
 		return fmt.Errorf("target %q already has an active run", t.Name)
 	}
-	run, err := s.createRun(ctx, repo, d, t, "push", commitSHA, uuid.NullUUID{}, values)
+	run, err := s.createRun(ctx, repo, d, t, "push", commitSHA, uuid.NullUUID{}, values, event)
 	if err != nil {
 		return err
 	}
@@ -131,22 +142,30 @@ func (s *Server) autoDeploy(ctx context.Context, repo *clouddb.Repo, d *config.D
 	return nil
 }
 
-// createRun inserts the run, its step rows, and the snapshot of the values
-// it starts with.
-func (s *Server) createRun(ctx context.Context, repo *clouddb.Repo, d *config.Deployment, t *clouddb.Target, trigger, commitSHA string, startedBy uuid.NullUUID, values map[string]string) (*clouddb.Run, error) {
-	run, err := s.Q.CreateRun(ctx, clouddb.CreateRunParams{
-		RepoID: repo.ID, TargetID: nullUUID(t.ID), Deployment: d.Name, TargetName: t.Name,
-		TriggerKind: trigger, CommitSha: commitSHA, StartedBy: startedBy,
+// createRun commits the run, step rows, input snapshot and audit record
+// before the execution goroutine can start.
+func (s *Server) createRun(ctx context.Context, repo *clouddb.Repo, d *config.Deployment, t *clouddb.Target, trigger, commitSHA string, startedBy uuid.NullUUID, values map[string]string, event *auditEvent) (*clouddb.Run, error) {
+	var run *clouddb.Run
+	err := s.auditedChange(ctx, event, func(q *clouddb.Queries) error {
+		created, err := q.CreateRun(ctx, clouddb.CreateRunParams{
+			RepoID: repo.ID, TargetID: nullUUID(t.ID), Deployment: d.Name, TargetName: t.Name,
+			TriggerKind: trigger, CommitSha: commitSHA, StartedBy: startedBy,
+		})
+		if err != nil {
+			return err
+		}
+		run = created
+		for i, step := range d.Steps {
+			if err := q.InsertRunStep(ctx, clouddb.InsertRunStepParams{RunID: run.ID, Idx: int32(i), Name: step.Name}); err != nil {
+				return err
+			}
+		}
+		event.subject("Run", run.ID, targetAuditName(repo.Name, d.Name, t.Name))
+		return s.storeRunInputs(ctx, q, run.ID, d, values)
 	})
 	if err != nil {
 		return nil, err
 	}
-	for i, step := range d.Steps {
-		if err := s.Q.InsertRunStep(ctx, clouddb.InsertRunStepParams{RunID: run.ID, Idx: int32(i), Name: step.Name}); err != nil {
-			return nil, err
-		}
-	}
-	s.storeRunInputs(ctx, run.ID, d, values)
 	return run, nil
 }
 
@@ -365,6 +384,7 @@ func (s *Server) pathRun(w http.ResponseWriter, r *http.Request, rc *repoCtx) *c
 		s.errorPage(w, r, rc.Sess, http.StatusNotFound, "Run not found")
 		return nil
 	}
+	auditSubject(r.Context(), "Run", run.ID, targetAuditName(rc.Repo.Name, run.Deployment, run.TargetName))
 	return run
 }
 
@@ -433,9 +453,14 @@ func (s *Server) handleRunCancel(w http.ResponseWriter, r *http.Request, rc *rep
 	cancel := s.cancels[run.ID.String()]
 	s.mu.Unlock()
 	if cancel != nil {
+		if err := s.recordAudit(r.Context(), requestAudit(r.Context())); err != nil {
+			s.errorPage(w, r, rc.Sess, http.StatusServiceUnavailable, "Could not record the cancellation request")
+			return
+		}
 		cancel()
 		web.SetFlash(w, "info", "Run canceled.")
 	} else {
+		auditResult(r.Context(), auditNoChange, "Run is no longer active")
 		web.SetFlash(w, "info", "This run is no longer active.")
 	}
 	http.Redirect(w, r, rc.repoURL()+"/runs/"+run.ID.String(), http.StatusSeeOther)
@@ -454,6 +479,12 @@ func (s *Server) handleRunEvents(w http.ResponseWriter, r *http.Request, rc *rep
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			afterSeq = n
 		}
+	}
+	// Record access before the stream opens; it may stay open for the run's
+	// entire lifetime, including across the browser disconnecting.
+	if err := s.recordAudit(r.Context(), requestAudit(r.Context())); err != nil {
+		http.Error(w, "Could not record access to the run logs", http.StatusServiceUnavailable)
+		return
 	}
 	sse, err := web.NewSSE(w)
 	if err != nil {

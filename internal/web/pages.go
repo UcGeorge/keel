@@ -265,6 +265,26 @@ type PageMembers struct {
 	Error      string
 }
 
+type AuditOption struct{ Key, Label string }
+
+type AuditRowVM struct {
+	ID                                     int64
+	OccurredAt                             time.Time
+	ActorID, ActorName, ActorEmail         string
+	Action, Source, Outcome, OutcomeLabel  string
+	ResourceType, ResourceName, ResourceID string
+	Detail                                 string
+}
+
+type PageAuditLog struct {
+	Base                              `json:"-"`
+	URL, OlderURL                     string
+	Search, Category, Source, Outcome string
+	Categories, Sources, Outcomes     []AuditOption
+	Rows                              []AuditRowVM
+	Filtered                          bool
+}
+
 // PageOrgSettings is the organization settings page.
 type PageOrgSettings struct {
 	Base     `json:"-"`

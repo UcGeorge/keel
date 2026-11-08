@@ -242,6 +242,15 @@ func TestRenderAllPages(t *testing.T) {
 			},
 			Invites: []InviteVM{{ID: "i1", Email: "new@example.com", Role: "member", ExpiresAt: time.Now().Add(24 * time.Hour)}},
 		},
+		"cloud/audit_log.html": PageAuditLog{
+			Base: cloudBase(), URL: "/orgs/pete/audit-log", OlderURL: "/orgs/pete/audit-log?before=41",
+			Category: "deployment", Filtered: true, Categories: []AuditOption{{Key: "deployment", Label: "Deployments and targets"}},
+			Rows: []AuditRowVM{
+				{ID: 41, OccurredAt: now.UTC(), ActorName: "Pete George", ActorEmail: "pete@example.com", Action: "Save target values", Source: "MCP",
+					ResourceType: "Target", ResourceName: "api / prod / client-a", ResourceID: "c02dd550-32aa-4ecc-b36f-92e2e3e200ae",
+					Outcome: "partial", OutcomeLabel: "Partially applied", Detail: "1 invalid field · Changed: API_KEY (secret)"},
+			},
+		},
 		"cloud/org_settings.html": PageOrgSettings{Base: cloudBase(), OrgName: "Acme", Personal: false, IsOwner: true},
 		"cloud/notifications.html": PageNotifications{
 			Base: cloudBase(), URLBase: "/orgs/pete", AIConfigured: true, AIURL: "/orgs/pete/ai",

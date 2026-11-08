@@ -223,68 +223,83 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /orgs/new", s.withUser(s.handleOrgNewPage))
 	mux.HandleFunc("POST /orgs/new", s.withUser(s.handleOrgNew))
 
-	// Org-scoped.
-	org := func(h func(http.ResponseWriter, *http.Request, *orgCtx)) http.HandlerFunc {
-		return s.withOrg(h)
-	}
-	mux.HandleFunc("GET /orgs/{org}", org(s.handleRepos))
-	mux.HandleFunc("GET /orgs/{org}/repos/new", org(s.handleRepoNewPage))
-	mux.HandleFunc("POST /orgs/{org}/repos", org(s.handleRepoCreate))
-	mux.HandleFunc("GET /orgs/{org}/runs", org(s.handleOrgRuns))
-	mux.HandleFunc("GET /orgs/{org}/runs-fragment", org(s.handleOrgRunsFragment))
-	mux.HandleFunc("GET /orgs/{org}/members", org(s.handleMembers))
-	mux.HandleFunc("POST /orgs/{org}/members/invite", org(s.handleMemberInvite))
-	mux.HandleFunc("POST /orgs/{org}/members/{user}/update", org(s.handleMemberUpdate))
-	mux.HandleFunc("POST /orgs/{org}/members/{user}/remove", org(s.handleMemberRemove))
-	mux.HandleFunc("POST /orgs/{org}/invites/{invite}/revoke", org(s.handleInviteRevoke))
-	mux.HandleFunc("GET /orgs/{org}/settings", org(s.handleOrgSettings))
-	mux.HandleFunc("POST /orgs/{org}/settings", org(s.handleOrgSettingsSave))
-	mux.HandleFunc("POST /orgs/{org}/delete", org(s.handleOrgDelete))
-	mux.HandleFunc("GET /orgs/{org}/notifications", org(s.handleNotifications))
-	mux.HandleFunc("POST /orgs/{org}/notifications/smtp", org(s.handleSMTPSave))
-	mux.HandleFunc("POST /orgs/{org}/notifications/smtp/test", org(s.handleSMTPTest))
-	mux.HandleFunc("POST /orgs/{org}/notifications/recipients", org(s.handleRecipientCreate))
-	mux.HandleFunc("POST /orgs/{org}/notifications/recipients/{id}/update", org(s.handleRecipientUpdate))
-	mux.HandleFunc("POST /orgs/{org}/notifications/recipients/{id}/delete", org(s.handleRecipientDelete))
-	mux.HandleFunc("GET /orgs/{org}/ai", org(s.handleAI))
-	mux.HandleFunc("POST /orgs/{org}/ai", org(s.handleAISave))
-	mux.HandleFunc("POST /orgs/{org}/ai/models", org(s.handleAIModels))
-	mux.HandleFunc("POST /orgs/{org}/ai/test", org(s.handleAITest))
-	mux.HandleFunc("POST /orgs/{org}/ai/delete", org(s.handleAIDelete))
-
-	// Repo-scoped.
-	repo := func(h func(http.ResponseWriter, *http.Request, *repoCtx)) http.HandlerFunc {
-		return s.withRepo(h)
-	}
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}", repo(s.handleRepo))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/sync", repo(s.handleRepoSync))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/settings", repo(s.handleRepoSettings))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/settings", repo(s.handleRepoSettingsSave))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/delete", repo(s.handleRepoDelete))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/runs", repo(s.handleRepoRuns))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/runs-fragment", repo(s.handleRepoRunsFragment))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/runs/{id}", repo(s.handleRun))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/runs/{id}/events", repo(s.handleRunEvents))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/runs/{id}/cancel", repo(s.handleRunCancel))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/runs/{id}/insight", repo(s.handleRunInsight))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}", repo(s.handleDeployment))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets", repo(s.handleTargetCreate))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}/manifest", repo(s.handleManifest))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}", repo(s.handleTarget))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/manifest", repo(s.handleManifest))
-	mux.HandleFunc("GET /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/runs-fragment", repo(s.handleTargetRunsFragment))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/values", repo(s.handleValuesSave))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/deploy", repo(s.handleDeploy))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/update", repo(s.handleTargetUpdate))
-	mux.HandleFunc("POST /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/delete", repo(s.handleTargetDelete))
-
-	s.registerMCP(mux)
+	s.registerMCP(mux, s.registerOrgRoutes(mux))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		s.errorPage(w, r, nil, http.StatusNotFound, "Page not found")
 	})
 
 	return s.recoverPanics(s.checkCSRF(mux))
+}
+
+// registerOrgRoutes returns the audit action for each org route. The MCP
+// adapter also uses the mapping for the tools it dispatches directly.
+func (s *Server) registerOrgRoutes(mux *http.ServeMux) map[string]string {
+	// Org-scoped. Only automatic table refreshes have no audit action.
+	actions := map[string]string{}
+	org := func(pattern, action string, h func(http.ResponseWriter, *http.Request, *orgCtx)) {
+		actions[pattern] = action
+		mux.HandleFunc(pattern, s.withOrg(action, h))
+	}
+	const o = "/orgs/{org}"
+	org("GET "+o, "repository.list", s.handleRepos)
+	org("GET "+o+"/repos/new", "repository.choices", s.handleRepoNewPage)
+	org("POST "+o+"/repos", "repository.connect", s.handleRepoCreate)
+	org("GET "+o+"/runs", "run.list", s.handleOrgRuns)
+	org("GET "+o+"/runs-fragment", "", s.handleOrgRunsFragment)
+	org("GET "+o+"/audit-log", "organization.audit_view", s.handleAuditLog)
+	org("GET "+o+"/members", "membership.list", s.handleMembers)
+	org("POST "+o+"/members/invite", "membership.invite", s.handleMemberInvite)
+	org("POST "+o+"/members/{user}/update", "membership.update", s.handleMemberUpdate)
+	org("POST "+o+"/members/{user}/remove", "membership.remove", s.handleMemberRemove)
+	org("POST "+o+"/invites/{invite}/revoke", "membership.revoke", s.handleInviteRevoke)
+	org("GET "+o+"/settings", "organization.settings_view", s.handleOrgSettings)
+	org("POST "+o+"/settings", "organization.rename", s.handleOrgSettingsSave)
+	org("POST "+o+"/delete", "organization.delete", s.handleOrgDelete)
+	org("GET "+o+"/notifications", "notification.view", s.handleNotifications)
+	org("POST "+o+"/notifications/smtp", "notification.smtp_save", s.handleSMTPSave)
+	org("POST "+o+"/notifications/smtp/test", "notification.smtp_test", s.handleSMTPTest)
+	org("POST "+o+"/notifications/recipients", "notification.recipient_create", s.handleRecipientCreate)
+	org("POST "+o+"/notifications/recipients/{id}/update", "notification.recipient_update", s.handleRecipientUpdate)
+	org("POST "+o+"/notifications/recipients/{id}/delete", "notification.recipient_delete", s.handleRecipientDelete)
+	org("GET "+o+"/ai", "ai.view", s.handleAI)
+	org("POST "+o+"/ai", "ai.save", s.handleAISave)
+	org("POST "+o+"/ai/models", "ai.models", s.handleAIModels)
+	org("POST "+o+"/ai/test", "ai.test", s.handleAITest)
+	org("POST "+o+"/ai/delete", "ai.delete", s.handleAIDelete)
+
+	// Repo-scoped.
+	repo := func(pattern, action string, h func(http.ResponseWriter, *http.Request, *repoCtx)) {
+		actions[pattern] = action
+		mux.HandleFunc(pattern, s.withRepo(action, h))
+	}
+	const rp = o + "/repos/{repo}"
+	const run = rp + "/runs/{id}"
+	const dep = rp + "/deployments/{dep}"
+	const tgt = dep + "/targets/{target}"
+	repo("GET "+rp, "repository.view", s.handleRepo)
+	repo("POST "+rp+"/sync", "repository.sync", s.handleRepoSync)
+	repo("GET "+rp+"/settings", "repository.settings_view", s.handleRepoSettings)
+	repo("POST "+rp+"/settings", "repository.update", s.handleRepoSettingsSave)
+	repo("POST "+rp+"/delete", "repository.disconnect", s.handleRepoDelete)
+	repo("GET "+rp+"/runs", "run.list", s.handleRepoRuns)
+	repo("GET "+rp+"/runs-fragment", "", s.handleRepoRunsFragment)
+	repo("GET "+run, "run.view", s.handleRun)
+	repo("GET "+run+"/events", "run.logs_view", s.handleRunEvents)
+	repo("POST "+run+"/cancel", "run.cancel", s.handleRunCancel)
+	repo("POST "+run+"/insight", "run.insight", s.handleRunInsight)
+	repo("GET "+dep, "deployment.view", s.handleDeployment)
+	repo("POST "+dep+"/targets", "deployment.target_create", s.handleTargetCreate)
+	repo("GET "+dep+"/manifest", "deployment.manifest_view", s.handleManifest)
+	repo("GET "+tgt, "deployment.target_view", s.handleTarget)
+	repo("GET "+tgt+"/manifest", "deployment.manifest_view", s.handleManifest)
+	repo("GET "+tgt+"/runs-fragment", "", s.handleTargetRunsFragment)
+	repo("POST "+tgt+"/values", "deployment.values_save", s.handleValuesSave)
+	repo("POST "+tgt+"/deploy", "run.deploy", s.handleDeploy)
+	repo("POST "+tgt+"/update", "deployment.target_update", s.handleTargetUpdate)
+	repo("POST "+tgt+"/delete", "deployment.target_delete", s.handleTargetDelete)
+
+	return actions
 }
 
 // --- middleware --------------------------------------------------------------
@@ -403,7 +418,7 @@ func (o *orgCtx) canDeploy() bool {
 func (o *orgCtx) urlBase() string { return "/orgs/" + o.Org.Slug }
 
 // withOrg requires a signed-in user who is a member of the org in the path.
-func (s *Server) withOrg(h func(http.ResponseWriter, *http.Request, *orgCtx)) http.HandlerFunc {
+func (s *Server) withOrg(action string, h func(http.ResponseWriter, *http.Request, *orgCtx)) http.HandlerFunc {
 	return s.withUser(func(w http.ResponseWriter, r *http.Request, sess *sessionInfo) {
 		org, err := s.Q.GetOrgBySlug(r.Context(), r.PathValue("org"))
 		if err != nil {
@@ -416,7 +431,14 @@ func (s *Server) withOrg(h func(http.ResponseWriter, *http.Request, *orgCtx)) ht
 			s.errorPage(w, r, sess, http.StatusNotFound, "Organization not found")
 			return
 		}
-		h(w, r, &orgCtx{Sess: sess, Org: org, Member: member})
+		oc := &orgCtx{Sess: sess, Org: org, Member: member}
+		if action == "" {
+			h(w, r, oc)
+			return
+		}
+		s.observeAudit(w, r, userAudit(r.Context(), sess.User, org, action), func(w http.ResponseWriter, r *http.Request) {
+			h(w, r, oc)
+		})
 	})
 }
 
@@ -439,8 +461,8 @@ type repoCtx struct {
 func (rc *repoCtx) repoURL() string { return rc.urlBase() + "/repos/" + rc.Repo.Name }
 
 // withRepo requires an org member and resolves the repository.
-func (s *Server) withRepo(h func(http.ResponseWriter, *http.Request, *repoCtx)) http.HandlerFunc {
-	return s.withOrg(func(w http.ResponseWriter, r *http.Request, oc *orgCtx) {
+func (s *Server) withRepo(action string, h func(http.ResponseWriter, *http.Request, *repoCtx)) http.HandlerFunc {
+	return s.withOrg(action, func(w http.ResponseWriter, r *http.Request, oc *orgCtx) {
 		repo, err := s.Q.GetRepoByName(r.Context(), clouddb.GetRepoByNameParams{
 			OrgID: oc.Org.ID, Lower: r.PathValue("repo"),
 		})
@@ -448,6 +470,7 @@ func (s *Server) withRepo(h func(http.ResponseWriter, *http.Request, *repoCtx)) 
 			s.errorPage(w, r, oc.Sess, http.StatusNotFound, "Repository not found")
 			return
 		}
+		auditSubject(r.Context(), "Repository", repo.ID, repo.Name)
 		h(w, r, &repoCtx{orgCtx: oc, Repo: repo})
 	})
 }
@@ -516,6 +539,7 @@ func (s *Server) base(w http.ResponseWriter, r *http.Request, sess *sessionInfo,
 		if oc.isAdmin() {
 			nav = append(nav, web.NavItem{Label: "Notifications", Href: base + "/notifications"})
 			nav = append(nav, web.NavItem{Label: "AI", Href: base + "/ai"})
+			nav = append(nav, web.NavItem{Label: "Audit log", Href: base + "/audit-log"})
 		}
 		if oc.isOwner() {
 			nav = append(nav, web.NavItem{Label: "Settings", Href: base + "/settings"})

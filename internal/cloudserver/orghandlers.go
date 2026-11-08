@@ -1,6 +1,8 @@
 package cloudserver
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 func nullUUID(id uuid.UUID) uuid.NullUUID { return uuid.NullUUID{UUID: id, Valid: true} }
@@ -37,21 +40,39 @@ func (s *Server) handleOrgNew(w http.ResponseWriter, r *http.Request, sess *sess
 		renderErr("Pick a name with at least two letters or digits.")
 		return
 	}
-	org, err := s.Q.CreateOrg(r.Context(), clouddb.CreateOrgParams{
+	ctx := r.Context()
+	org, err := s.createOrganization(ctx, userAudit(ctx, sess.User, nil, "organization.create"), clouddb.CreateOrgParams{
 		Slug: slug, Name: name, Personal: false, CreatedBy: nullUUID(sess.UserID),
 	})
 	if err != nil {
-		renderErr(fmt.Sprintf("The name %q is taken (an organization already uses the URL /orgs/%s).", name, slug))
-		return
-	}
-	if _, err := s.Q.CreateOrgMember(r.Context(), clouddb.CreateOrgMemberParams{
-		OrgID: org.ID, UserID: sess.UserID, Role: "owner", CanConfigure: true, CanDeploy: true,
-	}); err != nil {
-		s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not create the organization")
+		if uniqueViolation(err) {
+			renderErr(fmt.Sprintf("The name %q is taken (an organization already uses the URL /orgs/%s).", name, slug))
+		} else {
+			s.errorPage(w, r, sess, http.StatusInternalServerError, "Could not create the organization")
+		}
 		return
 	}
 	web.SetFlash(w, "success", "Organization created — connect a repository to get started.")
 	http.Redirect(w, r, "/orgs/"+org.Slug, http.StatusSeeOther)
+}
+
+func (s *Server) createOrganization(ctx context.Context, event *auditEvent, params clouddb.CreateOrgParams) (org *clouddb.Org, err error) {
+	err = s.auditedChange(ctx, event, func(q *clouddb.Queries) error {
+		org, err = q.CreateOrg(ctx, params)
+		if err != nil {
+			return err
+		}
+		event.organization(org)
+		_, err := q.CreateOrgMember(ctx, clouddb.CreateOrgMemberParams{
+			OrgID: org.ID, UserID: params.CreatedBy.UUID, Role: "owner", CanConfigure: true, CanDeploy: true,
+		})
+		return err
+	})
+	return org, err
+}
+
+func auditPermissions(role string, configure, deploy bool) string {
+	return fmt.Sprintf("Role: %s · Configure: %t · Deploy: %t", role, configure, deploy)
 }
 
 // --- members -----------------------------------------------------------------
@@ -141,11 +162,19 @@ func (s *Server) handleMemberInvite(w http.ResponseWriter, r *http.Request, oc *
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not create the invite")
 		return
 	}
-	if _, err := s.Q.CreateInvite(r.Context(), clouddb.CreateInviteParams{
-		OrgID: oc.Org.ID, Email: email, Role: role,
-		CanConfigure: canConfigure, CanDeploy: canDeploy,
-		TokenHash: tokenHash, InvitedBy: nullUUID(oc.Sess.UserID),
-		ExpiresAt: time.Now().Add(14 * 24 * time.Hour),
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		invite, err := q.CreateInvite(ctx, clouddb.CreateInviteParams{
+			OrgID: oc.Org.ID, Email: email, Role: role,
+			CanConfigure: canConfigure, CanDeploy: canDeploy,
+			TokenHash: tokenHash, InvitedBy: nullUUID(oc.Sess.UserID),
+			ExpiresAt: time.Now().Add(14 * 24 * time.Hour),
+		})
+		if err == nil {
+			auditSubject(ctx, "Invitation", invite.ID, invite.Email)
+			auditResult(ctx, auditSucceeded, auditPermissions(invite.Role, invite.CanConfigure, invite.CanDeploy))
+		}
+		return err
 	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not create the invite")
 		return
@@ -177,9 +206,16 @@ func (s *Server) handleMemberUpdate(w http.ResponseWriter, r *http.Request, oc *
 	if role != "member" {
 		canConfigure, canDeploy = true, true
 	}
-	if _, err := s.Q.UpdateOrgMember(r.Context(), clouddb.UpdateOrgMemberParams{
-		OrgID: oc.Org.ID, UserID: target.UserID, Role: role,
-		CanConfigure: canConfigure, CanDeploy: canDeploy,
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		member, err := q.UpdateOrgMember(ctx, clouddb.UpdateOrgMemberParams{
+			OrgID: oc.Org.ID, UserID: target.UserID, Role: role,
+			CanConfigure: canConfigure, CanDeploy: canDeploy,
+		})
+		if err == nil {
+			auditResult(ctx, auditSucceeded, auditPermissions(member.Role, member.CanConfigure, member.CanDeploy))
+		}
+		return err
 	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not update the member")
 		return
@@ -194,7 +230,10 @@ func (s *Server) handleMemberRemove(w http.ResponseWriter, r *http.Request, oc *
 	if !ok {
 		return
 	}
-	if err := s.Q.DeleteOrgMember(r.Context(), clouddb.DeleteOrgMemberParams{OrgID: oc.Org.ID, UserID: target.UserID}); err != nil {
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return requireAuditRow(q.DeleteOrgMember(ctx, clouddb.DeleteOrgMemberParams{OrgID: oc.Org.ID, UserID: target.UserID}))
+	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not remove the member")
 		return
 	}
@@ -219,6 +258,11 @@ func (s *Server) editableMember(w http.ResponseWriter, r *http.Request, oc *orgC
 		s.errorPage(w, r, oc.Sess, http.StatusNotFound, "Member not found")
 		return nil, false
 	}
+	name := ""
+	if u, err := s.Q.GetUser(r.Context(), target.UserID); err == nil {
+		name = u.Name + " <" + u.Email + ">"
+	}
+	auditSubject(r.Context(), "Member", target.UserID, name)
 	switch {
 	case target.UserID == oc.Sess.UserID:
 		s.errorPage(w, r, oc.Sess, http.StatusForbidden, "You cannot change your own membership")
@@ -247,9 +291,19 @@ func (s *Server) handleInviteRevoke(w http.ResponseWriter, r *http.Request, oc *
 		s.errorPage(w, r, oc.Sess, http.StatusForbidden, "Only owners and admins can revoke invites")
 		return
 	}
-	id := parseUUID(r.PathValue("invite"))
-	if err := s.Q.DeleteInvite(r.Context(), clouddb.DeleteInviteParams{ID: id, OrgID: oc.Org.ID}); err != nil {
-		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not revoke the invite")
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		invite, err := q.DeleteInvite(ctx, clouddb.DeleteInviteParams{ID: parseUUID(r.PathValue("invite")), OrgID: oc.Org.ID})
+		if err == nil {
+			auditSubject(ctx, "Invitation", invite.ID, invite.Email)
+		}
+		return err
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			s.errorPage(w, r, oc.Sess, http.StatusNotFound, "Invitation not found")
+		} else {
+			s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not revoke the invite")
+		}
 		return
 	}
 	web.SetFlash(w, "success", "Invite revoked.")
@@ -281,7 +335,17 @@ func (s *Server) handleOrgSettingsSave(w http.ResponseWriter, r *http.Request, o
 		http.Redirect(w, r, oc.urlBase()+"/settings", http.StatusSeeOther)
 		return
 	}
-	if _, err := s.Q.UpdateOrgName(r.Context(), clouddb.UpdateOrgNameParams{ID: oc.Org.ID, Name: name}); err != nil {
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		org, err := q.UpdateOrgName(ctx, clouddb.UpdateOrgNameParams{ID: oc.Org.ID, Name: name})
+		if err == nil {
+			auditSubject(ctx, "Organization", org.ID, org.Name)
+			if org.Name != oc.Org.Name {
+				auditResult(ctx, auditSucceeded, "Previous name: "+oc.Org.Name)
+			}
+		}
+		return err
+	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not rename the organization")
 		return
 	}
@@ -303,7 +367,10 @@ func (s *Server) handleOrgDelete(w http.ResponseWriter, r *http.Request, oc *org
 		http.Redirect(w, r, oc.urlBase()+"/settings", http.StatusSeeOther)
 		return
 	}
-	if err := s.Q.DeleteOrg(r.Context(), oc.Org.ID); err != nil {
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return requireAuditRow(q.DeleteOrg(ctx, oc.Org.ID))
+	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not delete the organization")
 		return
 	}

@@ -2,6 +2,7 @@ package cloudserver
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/UcGeorge/keel/internal/notify"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
 	"github.com/UcGeorge/keel/internal/web"
+	"github.com/jackc/pgx/v5"
 )
 
 // notifyURL is the notifications page of an organization.
@@ -129,9 +131,12 @@ func (s *Server) handleSMTPSave(w http.ResponseWriter, r *http.Request, oc *orgC
 	if form.Username == "" {
 		passwordEnc = nil
 	}
-	if err := s.Q.UpsertOrgSMTP(r.Context(), clouddb.UpsertOrgSMTPParams{
-		OrgID: oc.Org.ID, Host: form.Host, Port: int32(port), Username: form.Username, PasswordEnc: passwordEnc,
-		Encryption: form.Encryption, FromAddress: form.FromAddress, FromName: form.FromName, UpdatedBy: nullUUID(oc.Sess.UserID),
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return q.UpsertOrgSMTP(ctx, clouddb.UpsertOrgSMTPParams{
+			OrgID: oc.Org.ID, Host: form.Host, Port: int32(port), Username: form.Username, PasswordEnc: passwordEnc,
+			Encryption: form.Encryption, FromAddress: form.FromAddress, FromName: form.FromName, UpdatedBy: nullUUID(oc.Sess.UserID),
+		})
 	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not save the mail server settings")
 		return
@@ -157,12 +162,25 @@ func (s *Server) handleSMTPTest(w http.ResponseWriter, r *http.Request, oc *orgC
 		notify.Fact{Label: "Server", Value: cfg.Host + ":" + strconv.Itoa(cfg.Port) + " (" + cfg.Encryption + ")"},
 		notify.Fact{Label: "Sent to", Value: oc.Sess.User.Email},
 	)
-	sendErr := cfg.Send(r.Context(), []string{oc.Sess.User.Email}, ev.Subject(), ev.Text(), ev.HTML())
+	ctx := r.Context()
+	sendErr := cfg.Send(ctx, []string{oc.Sess.User.Email}, ev.Subject(), ev.Text(), ev.HTML())
 	msg := ""
 	if sendErr != nil {
 		msg = sendErr.Error()
+		auditResult(ctx, auditFailed, "Test email could not be sent")
 	}
-	_ = s.Q.SetOrgSMTPTest(r.Context(), clouddb.SetOrgSMTPTestParams{OrgID: oc.Org.ID, LastTestError: msg})
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return requireAuditRow(q.SetOrgSMTPTest(ctx, clouddb.SetOrgSMTPTestParams{OrgID: oc.Org.ID, LastTestError: msg}))
+	}); err != nil {
+		if sendErr == nil {
+			auditResult(ctx, auditPartial, "Email sent; the test result could not be saved")
+			web.SetFlash(w, "info", "Test email sent, but the result could not be saved.")
+		} else {
+			web.SetFlash(w, "error", "Test email failed and the result could not be saved.")
+		}
+		http.Redirect(w, r, oc.notifyURL(), http.StatusSeeOther)
+		return
+	}
 	if sendErr != nil {
 		web.SetFlash(w, "error", "Test email failed: "+msg)
 	} else {
@@ -204,10 +222,21 @@ func (s *Server) handleRecipientCreate(w http.ResponseWriter, r *http.Request, o
 		s.renderNotifications(w, r, oc, nil, form, "Tick at least one event for this recipient.", http.StatusUnprocessableEntity)
 		return
 	}
-	if _, err := s.Q.CreateRecipient(r.Context(), clouddb.CreateRecipientParams{
-		OrgID: oc.Org.ID, Email: email, Events: events, Enabled: true, IncludeInsight: includeInsight, CreatedBy: nullUUID(oc.Sess.UserID),
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		row, err := q.CreateRecipient(ctx, clouddb.CreateRecipientParams{
+			OrgID: oc.Org.ID, Email: email, Events: events, Enabled: true, IncludeInsight: includeInsight, CreatedBy: nullUUID(oc.Sess.UserID),
+		})
+		if err == nil {
+			auditSubject(ctx, "Recipient", row.ID, row.Email)
+		}
+		return err
 	}); err != nil {
-		s.renderNotifications(w, r, oc, nil, form, email+" is already a recipient — edit it in the list above.", http.StatusUnprocessableEntity)
+		if uniqueViolation(err) {
+			s.renderNotifications(w, r, oc, nil, form, email+" is already a recipient — edit it in the list above.", http.StatusUnprocessableEntity)
+		} else {
+			s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not add the recipient")
+		}
 		return
 	}
 	web.SetFlash(w, "success", email+" will receive "+strconv.Itoa(len(events))+" event type(s).")
@@ -223,15 +252,27 @@ func (s *Server) handleRecipientUpdate(w http.ResponseWriter, r *http.Request, o
 		s.errorPage(w, r, oc.Sess, http.StatusNotFound, "Recipient not found")
 		return
 	}
+	ctx := r.Context()
+	auditSubject(ctx, "Recipient", rcpt.ID, rcpt.Email)
 	email, events, enabled, includeInsight, _ := recipientForm(r)
 	if !auth.ValidEmail(email) {
 		web.SetFlash(w, "error", "Enter a valid email address.")
 		http.Redirect(w, r, oc.notifyURL(), http.StatusSeeOther)
 		return
 	}
-	if err := s.Q.UpdateRecipient(r.Context(), clouddb.UpdateRecipientParams{
-		ID: rcpt.ID, OrgID: oc.Org.ID, Email: email, Events: events, Enabled: enabled, IncludeInsight: includeInsight,
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		if err := requireAuditRow(q.UpdateRecipient(ctx, clouddb.UpdateRecipientParams{
+			ID: rcpt.ID, OrgID: oc.Org.ID, Email: email, Events: events, Enabled: enabled, IncludeInsight: includeInsight,
+		})); err != nil {
+			return err
+		}
+		auditSubject(ctx, "Recipient", rcpt.ID, email)
+		return nil
 	}); err != nil {
+		if !uniqueViolation(err) {
+			s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not update the recipient")
+			return
+		}
 		web.SetFlash(w, "error", "Another recipient already uses "+email+".")
 		http.Redirect(w, r, oc.notifyURL(), http.StatusSeeOther)
 		return
@@ -244,8 +285,19 @@ func (s *Server) handleRecipientDelete(w http.ResponseWriter, r *http.Request, o
 	if !s.requireAdmin(w, r, oc, "notifications") {
 		return
 	}
-	if err := s.Q.DeleteRecipient(r.Context(), clouddb.DeleteRecipientParams{ID: parseUUID(r.PathValue("id")), OrgID: oc.Org.ID}); err != nil {
-		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not remove the recipient")
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		row, err := q.DeleteRecipient(ctx, clouddb.DeleteRecipientParams{ID: parseUUID(r.PathValue("id")), OrgID: oc.Org.ID})
+		if err == nil {
+			auditSubject(ctx, "Recipient", row.ID, row.Email)
+		}
+		return err
+	}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			s.errorPage(w, r, oc.Sess, http.StatusNotFound, "Recipient not found")
+		} else {
+			s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not remove the recipient")
+		}
 		return
 	}
 	web.SetFlash(w, "success", "Recipient removed.")

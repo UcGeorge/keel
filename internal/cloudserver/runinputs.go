@@ -2,7 +2,7 @@ package cloudserver
 
 import (
 	"context"
-	"log/slog"
+	"fmt"
 
 	"github.com/UcGeorge/keel/internal/config"
 	"github.com/UcGeorge/keel/internal/store/clouddb"
@@ -12,23 +12,23 @@ import (
 
 // storeRunInputs snapshots the values a run starts with. Non-secret values
 // are encrypted at rest; secrets record only that a value was set.
-func (s *Server) storeRunInputs(ctx context.Context, runID uuid.UUID, d *config.Deployment, values map[string]string) {
+func (s *Server) storeRunInputs(ctx context.Context, q *clouddb.Queries, runID uuid.UUID, d *config.Deployment, values map[string]string) error {
 	for _, in := range web.SnapshotInputs(d, values) {
 		var enc []byte
 		if in.Value != "" {
 			var err error
 			if enc, err = s.Box.SealString(in.Value); err != nil {
-				slog.Error("seal run input", "run", runID, "input", in.Name, "err", err)
-				continue
+				return fmt.Errorf("seal run input %s: %w", in.Name, err)
 			}
 		}
-		if err := s.Q.InsertRunInput(ctx, clouddb.InsertRunInputParams{
+		if err := q.InsertRunInput(ctx, clouddb.InsertRunInputParams{
 			RunID: runID, Idx: int32(in.Idx), Name: in.Name, Label: in.Label,
 			ValueEnc: enc, IsSecret: in.Secret, DeployTime: in.DeployTime, Source: in.Source,
 		}); err != nil {
-			slog.Error("store run input", "run", runID, "input", in.Name, "err", err)
+			return err
 		}
 	}
+	return nil
 }
 
 // runInputVMs loads and decrypts a run's inputs in declaration order.

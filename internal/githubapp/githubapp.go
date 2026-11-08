@@ -255,6 +255,10 @@ type PushEvent struct {
 	Installation struct {
 		ID int64 `json:"id"`
 	} `json:"installation"`
+	Sender struct {
+		ID    int64  `json:"id"`
+		Login string `json:"login"`
+	} `json:"sender"`
 }
 
 // Branch returns the branch name for a branch push, or "".

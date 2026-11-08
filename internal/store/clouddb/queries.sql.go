@@ -13,13 +13,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const acceptInvite = `-- name: AcceptInvite :exec
-UPDATE org_invites SET accepted_at = now() WHERE id = $1
+const acceptInvite = `-- name: AcceptInvite :execrows
+UPDATE org_invites SET accepted_at = now()
+WHERE id = $1 AND accepted_at IS NULL AND expires_at > now()
 `
 
-func (q *Queries) AcceptInvite(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, acceptInvite, id)
-	return err
+func (q *Queries) AcceptInvite(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, acceptInvite, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const appendRunLog = `-- name: AppendRunLog :exec
@@ -638,8 +642,9 @@ func (q *Queries) DeleteGithubInstallation(ctx context.Context, installationID i
 	return err
 }
 
-const deleteInvite = `-- name: DeleteInvite :exec
-DELETE FROM org_invites WHERE id = $1 AND org_id = $2
+const deleteInvite = `-- name: DeleteInvite :one
+DELETE FROM org_invites WHERE id = $1 AND org_id = $2 AND accepted_at IS NULL
+RETURNING id, email
 `
 
 type DeleteInviteParams struct {
@@ -647,30 +652,43 @@ type DeleteInviteParams struct {
 	OrgID uuid.UUID
 }
 
-func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) error {
-	_, err := q.db.Exec(ctx, deleteInvite, arg.ID, arg.OrgID)
-	return err
+type DeleteInviteRow struct {
+	ID    uuid.UUID
+	Email string
 }
 
-const deleteOrg = `-- name: DeleteOrg :exec
+func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) (*DeleteInviteRow, error) {
+	row := q.db.QueryRow(ctx, deleteInvite, arg.ID, arg.OrgID)
+	var i DeleteInviteRow
+	err := row.Scan(&i.ID, &i.Email)
+	return &i, err
+}
+
+const deleteOrg = `-- name: DeleteOrg :execrows
 DELETE FROM orgs WHERE id = $1
 `
 
-func (q *Queries) DeleteOrg(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteOrg, id)
-	return err
+func (q *Queries) DeleteOrg(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOrg, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteOrgAI = `-- name: DeleteOrgAI :exec
+const deleteOrgAI = `-- name: DeleteOrgAI :execrows
 DELETE FROM org_ai_settings WHERE org_id = $1
 `
 
-func (q *Queries) DeleteOrgAI(ctx context.Context, orgID uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteOrgAI, orgID)
-	return err
+func (q *Queries) DeleteOrgAI(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOrgAI, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteOrgMember = `-- name: DeleteOrgMember :exec
+const deleteOrgMember = `-- name: DeleteOrgMember :execrows
 DELETE FROM org_members WHERE org_id = $1 AND user_id = $2
 `
 
@@ -679,9 +697,12 @@ type DeleteOrgMemberParams struct {
 	UserID uuid.UUID
 }
 
-func (q *Queries) DeleteOrgMember(ctx context.Context, arg DeleteOrgMemberParams) error {
-	_, err := q.db.Exec(ctx, deleteOrgMember, arg.OrgID, arg.UserID)
-	return err
+func (q *Queries) DeleteOrgMember(ctx context.Context, arg DeleteOrgMemberParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteOrgMember, arg.OrgID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteOrgSMTP = `-- name: DeleteOrgSMTP :exec
@@ -693,8 +714,9 @@ func (q *Queries) DeleteOrgSMTP(ctx context.Context, orgID uuid.UUID) error {
 	return err
 }
 
-const deleteRecipient = `-- name: DeleteRecipient :exec
+const deleteRecipient = `-- name: DeleteRecipient :one
 DELETE FROM notification_recipients WHERE id = $1 AND org_id = $2
+RETURNING id, email
 `
 
 type DeleteRecipientParams struct {
@@ -702,18 +724,28 @@ type DeleteRecipientParams struct {
 	OrgID uuid.UUID
 }
 
-func (q *Queries) DeleteRecipient(ctx context.Context, arg DeleteRecipientParams) error {
-	_, err := q.db.Exec(ctx, deleteRecipient, arg.ID, arg.OrgID)
-	return err
+type DeleteRecipientRow struct {
+	ID    uuid.UUID
+	Email string
 }
 
-const deleteRepo = `-- name: DeleteRepo :exec
+func (q *Queries) DeleteRecipient(ctx context.Context, arg DeleteRecipientParams) (*DeleteRecipientRow, error) {
+	row := q.db.QueryRow(ctx, deleteRecipient, arg.ID, arg.OrgID)
+	var i DeleteRecipientRow
+	err := row.Scan(&i.ID, &i.Email)
+	return &i, err
+}
+
+const deleteRepo = `-- name: DeleteRepo :execrows
 DELETE FROM repos WHERE id = $1
 `
 
-func (q *Queries) DeleteRepo(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteRepo, id)
-	return err
+func (q *Queries) DeleteRepo(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRepo, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -725,16 +757,19 @@ func (q *Queries) DeleteSession(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const deleteTarget = `-- name: DeleteTarget :exec
+const deleteTarget = `-- name: DeleteTarget :execrows
 DELETE FROM targets WHERE id = $1
 `
 
-func (q *Queries) DeleteTarget(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTarget, id)
-	return err
+func (q *Queries) DeleteTarget(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTarget, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
-const deleteTargetValue = `-- name: DeleteTargetValue :exec
+const deleteTargetValue = `-- name: DeleteTargetValue :execrows
 DELETE FROM target_values WHERE target_id = $1 AND var_name = $2
 `
 
@@ -743,9 +778,12 @@ type DeleteTargetValueParams struct {
 	VarName  string
 }
 
-func (q *Queries) DeleteTargetValue(ctx context.Context, arg DeleteTargetValueParams) error {
-	_, err := q.db.Exec(ctx, deleteTargetValue, arg.TargetID, arg.VarName)
-	return err
+func (q *Queries) DeleteTargetValue(ctx context.Context, arg DeleteTargetValueParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTargetValue, arg.TargetID, arg.VarName)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteUserSessions = `-- name: DeleteUserSessions :exec
@@ -1315,6 +1353,47 @@ func (q *Queries) InsertMCPAudit(ctx context.Context, arg InsertMCPAuditParams) 
 	return err
 }
 
+const insertOrgAuditEvent = `-- name: InsertOrgAuditEvent :exec
+
+INSERT INTO org_audit_events (org_id, actor_id, actor_name, actor_email, source,
+    action, category, outcome, resource_type, resource_id, resource_name, detail)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+`
+
+type InsertOrgAuditEventParams struct {
+	OrgID        uuid.UUID
+	ActorID      string
+	ActorName    string
+	ActorEmail   string
+	Source       string
+	Action       string
+	Category     string
+	Outcome      string
+	ResourceType string
+	ResourceID   uuid.NullUUID
+	ResourceName string
+	Detail       string
+}
+
+// Organization audit log -----------------------------------------------------
+func (q *Queries) InsertOrgAuditEvent(ctx context.Context, arg InsertOrgAuditEventParams) error {
+	_, err := q.db.Exec(ctx, insertOrgAuditEvent,
+		arg.OrgID,
+		arg.ActorID,
+		arg.ActorName,
+		arg.ActorEmail,
+		arg.Source,
+		arg.Action,
+		arg.Category,
+		arg.Outcome,
+		arg.ResourceType,
+		arg.ResourceID,
+		arg.ResourceName,
+		arg.Detail,
+	)
+	return err
+}
+
 const insertRunInput = `-- name: InsertRunInput :exec
 
 INSERT INTO run_inputs (run_id, idx, name, label, value_enc, is_secret, deploy_time, source)
@@ -1590,6 +1669,71 @@ func (q *Queries) ListMCPOrgsForUser(ctx context.Context, userID uuid.UUID) ([]*
 			&i.Role,
 			&i.CanConfigure,
 			&i.CanDeploy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, &i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOrgAuditEvents = `-- name: ListOrgAuditEvents :many
+SELECT id, org_id, occurred_at, actor_id, actor_name, actor_email, source, action, category, outcome, resource_type, resource_id, resource_name, detail FROM org_audit_events
+WHERE org_id = $1 AND id < $2
+  AND ($3::text = '' OR category = $3)
+  AND ($4::text = '' OR outcome = $4)
+  AND ($5::text = '' OR source = $5)
+  AND ($6::text = '' OR strpos(lower(concat_ws(' ', actor_id, actor_name, actor_email,
+        resource_id::text, resource_name, replace(action, '.', ' '))), lower($6)) > 0)
+ORDER BY id DESC
+LIMIT $7
+`
+
+type ListOrgAuditEventsParams struct {
+	OrgID     uuid.UUID
+	BeforeID  int64
+	Category  string
+	Outcome   string
+	Source    string
+	Search    string
+	PageLimit int32
+}
+
+func (q *Queries) ListOrgAuditEvents(ctx context.Context, arg ListOrgAuditEventsParams) ([]*OrgAuditEvent, error) {
+	rows, err := q.db.Query(ctx, listOrgAuditEvents,
+		arg.OrgID,
+		arg.BeforeID,
+		arg.Category,
+		arg.Outcome,
+		arg.Source,
+		arg.Search,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []*OrgAuditEvent
+	for rows.Next() {
+		var i OrgAuditEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.OccurredAt,
+			&i.ActorID,
+			&i.ActorName,
+			&i.ActorEmail,
+			&i.Source,
+			&i.Action,
+			&i.Category,
+			&i.Outcome,
+			&i.ResourceType,
+			&i.ResourceID,
+			&i.ResourceName,
+			&i.Detail,
 		); err != nil {
 			return nil, err
 		}
@@ -2566,7 +2710,7 @@ func (q *Queries) RevokeUserMCPGrants(ctx context.Context, userID uuid.UUID) err
 	return err
 }
 
-const setOrgSMTPTest = `-- name: SetOrgSMTPTest :exec
+const setOrgSMTPTest = `-- name: SetOrgSMTPTest :execrows
 UPDATE org_smtp_settings SET last_test_at = now(), last_test_error = $2 WHERE org_id = $1
 `
 
@@ -2575,9 +2719,12 @@ type SetOrgSMTPTestParams struct {
 	LastTestError string
 }
 
-func (q *Queries) SetOrgSMTPTest(ctx context.Context, arg SetOrgSMTPTestParams) error {
-	_, err := q.db.Exec(ctx, setOrgSMTPTest, arg.OrgID, arg.LastTestError)
-	return err
+func (q *Queries) SetOrgSMTPTest(ctx context.Context, arg SetOrgSMTPTestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setOrgSMTPTest, arg.OrgID, arg.LastTestError)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const setRunCommit = `-- name: SetRunCommit :exec
@@ -2742,7 +2889,7 @@ func (q *Queries) UpdateOrgName(ctx context.Context, arg UpdateOrgNameParams) (*
 	return &i, err
 }
 
-const updateRecipient = `-- name: UpdateRecipient :exec
+const updateRecipient = `-- name: UpdateRecipient :execrows
 UPDATE notification_recipients SET email = $3, events = $4, enabled = $5, include_insight = $6, updated_at = now()
 WHERE id = $1 AND org_id = $2
 `
@@ -2756,8 +2903,8 @@ type UpdateRecipientParams struct {
 	IncludeInsight bool
 }
 
-func (q *Queries) UpdateRecipient(ctx context.Context, arg UpdateRecipientParams) error {
-	_, err := q.db.Exec(ctx, updateRecipient,
+func (q *Queries) UpdateRecipient(ctx context.Context, arg UpdateRecipientParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRecipient,
 		arg.ID,
 		arg.OrgID,
 		arg.Email,
@@ -2765,7 +2912,10 @@ func (q *Queries) UpdateRecipient(ctx context.Context, arg UpdateRecipientParams
 		arg.Enabled,
 		arg.IncludeInsight,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateRepoSettings = `-- name: UpdateRepoSettings :one
@@ -2814,7 +2964,7 @@ func (q *Queries) UpdateRepoSettings(ctx context.Context, arg UpdateRepoSettings
 	return &i, err
 }
 
-const updateRepoSync = `-- name: UpdateRepoSync :exec
+const updateRepoSync = `-- name: UpdateRepoSync :execrows
 UPDATE repos
 SET status = $2, config_yaml = $3, config_error = $4, last_commit_sha = $5,
     last_synced_at = now(), updated_at = now()
@@ -2829,15 +2979,18 @@ type UpdateRepoSyncParams struct {
 	LastCommitSha string
 }
 
-func (q *Queries) UpdateRepoSync(ctx context.Context, arg UpdateRepoSyncParams) error {
-	_, err := q.db.Exec(ctx, updateRepoSync,
+func (q *Queries) UpdateRepoSync(ctx context.Context, arg UpdateRepoSyncParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateRepoSync,
 		arg.ID,
 		arg.Status,
 		arg.ConfigYaml,
 		arg.ConfigError,
 		arg.LastCommitSha,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateTarget = `-- name: UpdateTarget :one

@@ -18,17 +18,31 @@ func TestMCPPortalCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	routes := regexp.MustCompile(`mux.HandleFunc\("((?:GET|POST) [^"]+)"`).FindAllStringSubmatch(string(source), -1)
+	var routes []string
+	for _, match := range regexp.MustCompile(`mux.HandleFunc\("((?:GET|POST) [^"]+)"`).FindAllStringSubmatch(string(source), -1) {
+		routes = append(routes, match[1])
+	}
+	orgRoutes := (&Server{}).registerOrgRoutes(http.NewServeMux())
+	for pattern, action := range orgRoutes {
+		routes = append(routes, pattern)
+		if action == "" && !strings.HasSuffix(pattern, "/runs-fragment") {
+			t.Errorf("org route has no audit action: %s", pattern)
+		}
+		if action != "" && auditActionLabels[action] == "" {
+			t.Errorf("org route has no audit label: %s (%s)", pattern, action)
+		}
+	}
 	excluded := map[string]string{
 		"GET /healthz":          "Operational health check, not a user action",
 		"POST /webhooks/github": "GitHub authenticates independently with webhook HMAC",
 		"GET /login":            "OAuth uses browser login", "POST /login": "Passwords are never exchanged for MCP tokens",
 		"GET /signup": "Account bootstrap is a browser action", "POST /signup": "OAuth requires an existing account",
-		"POST /logout":                  "Browser logout; MCP uses OAuth revocation",
-		"GET /{$}":                      "Redirect only; list_organizations supplies the data",
-		"GET /orgs/new":                 "Empty form; create_organization describes its fields",
-		"GET /orgs/{org}/runs-fragment": "Polling duplicate of list_org_runs",
-		"GET /orgs/{org}/repos/{repo}/runs-fragment":                                    "Polling duplicate of list_repo_runs",
+		"POST /logout":                               "Browser logout; MCP uses OAuth revocation",
+		"GET /{$}":                                   "Redirect only; list_organizations supplies the data",
+		"GET /orgs/new":                              "Empty form; create_organization describes its fields",
+		"GET /orgs/{org}/audit-log":                  "Historical actor data is only available in the admin portal",
+		"GET /orgs/{org}/runs-fragment":              "Polling duplicate of list_org_runs",
+		"GET /orgs/{org}/repos/{repo}/runs-fragment": "Polling duplicate of list_repo_runs",
 		"GET /orgs/{org}/repos/{repo}/deployments/{dep}/targets/{target}/runs-fragment": "Already returned by get_target",
 	}
 	seen := map[string]bool{}
@@ -43,9 +57,9 @@ func TestMCPPortalCoverage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, m := range routes {
-		if !seen[m[1]] && excluded[m[1]] == "" {
-			t.Errorf("portal route has no MCP coverage: %s", m[1])
+	for _, route := range routes {
+		if !seen[route] && excluded[route] == "" {
+			t.Errorf("portal route has no MCP coverage: %s", route)
 		}
 	}
 }

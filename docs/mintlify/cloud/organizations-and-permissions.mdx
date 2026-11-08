@@ -22,6 +22,7 @@ may additionally hold two **scopes**: *deploy* and *configure*.
 | Capability | owner | admin | member |
 |---|---|---|---|
 | View repositories, targets, runs, and logs | ✓ | ✓ | ✓ |
+| View the organization audit log | ✓ | ✓ | — |
 | Deploy and cancel runs | ✓ | ✓ | with the **deploy** scope |
 | Create targets, edit variables, delete targets | ✓ | ✓ | with the **configure** scope |
 | Reveal secret outputs | ✓ | ✓ | with either scope |
@@ -41,6 +42,30 @@ least one owner; the last owner cannot be demoted or removed.
   credentials, the **configure** scope. They can run the deployment and fill
   in the form, and nothing else.
 </Tip>
+
+## Audit log
+
+To see who accessed or changed an organization, select it and open
+**Audit log**. Each entry shows the actor, action, resource, source, time in UTC,
+and outcome. Search for a person or resource by name, email, or ID. Filter
+by category, source, or outcome, then select **Older events** to continue
+with the same filters.
+
+You can trace browser and MCP actions such as reading run logs, changing
+member permissions, saving target values, or requesting a deployment.
+GitHub push activity is labeled separately. The log includes failed and
+denied actions by authenticated members of the organization. For
+example, if Keel saves some target values and rejects others, the event
+shows **Partially applied** and lists the variables that changed.
+
+Entries omit variable values, credentials, invite links, and run log
+content. Account activity and automatic table refreshes are outside the
+organization log.
+
+Recording starts when you upgrade. Events do not expire automatically,
+and they preserve actor and resource names as they appeared at the time.
+You can still read entries for removed members and deleted resources.
+Deleting an organization removes portal access to its audit history.
 
 ## Invites
 

@@ -111,6 +111,9 @@ func (s *Server) handleAIModels(w http.ResponseWriter, r *http.Request, oc *orgC
 			}
 		}
 	}
+	if vm.Error != "" {
+		auditResult(r.Context(), auditFailed, "")
+	}
 	s.Renderer.RenderFragment(w, "cloud/ai.html", "ai_models", vm)
 }
 
@@ -121,6 +124,9 @@ func (s *Server) handleAITest(w http.ResponseWriter, r *http.Request, oc *orgCtx
 		return
 	}
 	vm := s.aiPing(r, oc)
+	if !vm.OK {
+		auditResult(r.Context(), auditFailed, "")
+	}
 	s.Renderer.RenderFragment(w, "cloud/ai.html", "ai_test", vm)
 }
 
@@ -159,8 +165,11 @@ func (s *Server) handleAISave(w http.ResponseWriter, r *http.Request, oc *orgCtx
 		}
 		keyEnc = enc
 	}
-	if err := s.Q.UpsertOrgAI(r.Context(), clouddb.UpsertOrgAIParams{
-		OrgID: oc.Org.ID, BaseUrl: client.BaseURL, ApiKeyEnc: keyEnc, Model: model, UpdatedBy: nullUUID(oc.Sess.UserID),
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return q.UpsertOrgAI(ctx, clouddb.UpsertOrgAIParams{
+			OrgID: oc.Org.ID, BaseUrl: client.BaseURL, ApiKeyEnc: keyEnc, Model: model, UpdatedBy: nullUUID(oc.Sess.UserID),
+		})
 	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not save the AI settings")
 		return
@@ -193,7 +202,14 @@ func (s *Server) handleAIDelete(w http.ResponseWriter, r *http.Request, oc *orgC
 	if !s.requireAdmin(w, r, oc, "AI insights") {
 		return
 	}
-	if err := s.Q.DeleteOrgAI(r.Context(), oc.Org.ID); err != nil {
+	ctx := r.Context()
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		rows, err := q.DeleteOrgAI(ctx, oc.Org.ID)
+		if err == nil && rows == 0 {
+			auditResult(ctx, auditNoChange, "AI was already disabled")
+		}
+		return err
+	}); err != nil {
 		s.errorPage(w, r, oc.Sess, http.StatusInternalServerError, "Could not turn off AI insights")
 		return
 	}
@@ -250,6 +266,7 @@ func (s *Server) handleRunInsight(w http.ResponseWriter, r *http.Request, rc *re
 	}
 	client, model, ok := s.aiClient(ctx, rc.Org.ID)
 	if !ok {
+		auditResult(ctx, auditFailed, "AI insights are not configured")
 		card.Error = "AI insights are not set up for this organization."
 		s.Renderer.RenderFragment(w, "run.html", "insight_card", card)
 		return
@@ -259,14 +276,17 @@ func (s *Server) handleRunInsight(w http.ResponseWriter, r *http.Request, rc *re
 	defer cancel()
 	content, err := insight.Explain(genCtx, client, model, rctx)
 	if err != nil {
+		auditResult(ctx, auditFailed, "AI provider could not generate the insight")
 		card.Error = "The model could not be reached: " + err.Error()
 		s.Renderer.RenderFragment(w, "run.html", "insight_card", card)
 		return
 	}
-	if err := s.Q.UpsertRunInsight(ctx, clouddb.UpsertRunInsightParams{
-		RunID: run.ID, Model: model, Content: content, CreatedBy: nullUUID(rc.Sess.UserID),
+	if err := s.auditedChange(ctx, requestAudit(ctx), func(q *clouddb.Queries) error {
+		return q.UpsertRunInsight(ctx, clouddb.UpsertRunInsightParams{
+			RunID: run.ID, Model: model, Content: content, CreatedBy: nullUUID(rc.Sess.UserID),
+		})
 	}); err != nil {
-		card.Error = "The explanation could not be stored: " + err.Error()
+		card.Error = "The explanation could not be stored."
 	}
 	if row, err := s.Q.GetRunInsight(ctx, run.ID); err == nil {
 		card.Insight = s.insightVM(ctx, row)

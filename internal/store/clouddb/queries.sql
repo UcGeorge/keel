@@ -54,7 +54,7 @@ SELECT * FROM orgs WHERE lower(slug) = lower($1);
 UPDATE orgs SET name = $2 WHERE id = $1
 RETURNING *;
 
--- name: DeleteOrg :exec
+-- name: DeleteOrg :execrows
 DELETE FROM orgs WHERE id = $1;
 
 -- name: ListOrgsForUser :many
@@ -86,7 +86,7 @@ UPDATE org_members SET role = $3, can_configure = $4, can_deploy = $5
 WHERE org_id = $1 AND user_id = $2
 RETURNING *;
 
--- name: DeleteOrgMember :exec
+-- name: DeleteOrgMember :execrows
 DELETE FROM org_members WHERE org_id = $1 AND user_id = $2;
 
 -- name: CountOrgOwners :one
@@ -108,11 +108,13 @@ SELECT * FROM org_invites
 WHERE org_id = $1 AND accepted_at IS NULL AND expires_at > now()
 ORDER BY created_at DESC;
 
--- name: AcceptInvite :exec
-UPDATE org_invites SET accepted_at = now() WHERE id = $1;
+-- name: AcceptInvite :execrows
+UPDATE org_invites SET accepted_at = now()
+WHERE id = $1 AND accepted_at IS NULL AND expires_at > now();
 
--- name: DeleteInvite :exec
-DELETE FROM org_invites WHERE id = $1 AND org_id = $2;
+-- name: DeleteInvite :one
+DELETE FROM org_invites WHERE id = $1 AND org_id = $2 AND accepted_at IS NULL
+RETURNING id, email;
 
 -- GitHub installations -------------------------------------------------------
 
@@ -157,13 +159,13 @@ SET name = $2, branch = $3, git_url = $4, auth_token_enc = $5, updated_at = now(
 WHERE id = $1
 RETURNING *;
 
--- name: UpdateRepoSync :exec
+-- name: UpdateRepoSync :execrows
 UPDATE repos
 SET status = $2, config_yaml = $3, config_error = $4, last_commit_sha = $5,
     last_synced_at = now(), updated_at = now()
 WHERE id = $1;
 
--- name: DeleteRepo :exec
+-- name: DeleteRepo :execrows
 DELETE FROM repos WHERE id = $1;
 
 -- Targets --------------------------------------------------------------------
@@ -194,7 +196,7 @@ UPDATE targets SET name = $2, description = $3, auto_deploy = $4, updated_at = n
 WHERE id = $1
 RETURNING *;
 
--- name: DeleteTarget :exec
+-- name: DeleteTarget :execrows
 DELETE FROM targets WHERE id = $1;
 
 -- Target values --------------------------------------------------------------
@@ -211,7 +213,7 @@ DO UPDATE SET value_enc = excluded.value_enc,
 -- name: ListTargetValues :many
 SELECT * FROM target_values WHERE target_id = $1 ORDER BY var_name;
 
--- name: DeleteTargetValue :exec
+-- name: DeleteTargetValue :execrows
 DELETE FROM target_values WHERE target_id = $1 AND var_name = $2;
 
 -- Runs -----------------------------------------------------------------------
@@ -326,7 +328,7 @@ ON CONFLICT (org_id) DO UPDATE SET
     from_address = excluded.from_address, from_name = excluded.from_name,
     updated_by = excluded.updated_by, updated_at = now();
 
--- name: SetOrgSMTPTest :exec
+-- name: SetOrgSMTPTest :execrows
 UPDATE org_smtp_settings SET last_test_at = now(), last_test_error = $2 WHERE org_id = $1;
 
 -- name: DeleteOrgSMTP :exec
@@ -350,12 +352,13 @@ SELECT * FROM notification_recipients
 WHERE org_id = $1 AND enabled = true AND $2::text = ANY(events)
 ORDER BY lower(email);
 
--- name: UpdateRecipient :exec
+-- name: UpdateRecipient :execrows
 UPDATE notification_recipients SET email = $3, events = $4, enabled = $5, include_insight = $6, updated_at = now()
 WHERE id = $1 AND org_id = $2;
 
--- name: DeleteRecipient :exec
-DELETE FROM notification_recipients WHERE id = $1 AND org_id = $2;
+-- name: DeleteRecipient :one
+DELETE FROM notification_recipients WHERE id = $1 AND org_id = $2
+RETURNING id, email;
 
 -- Notification deliveries ----------------------------------------------------
 
@@ -384,7 +387,7 @@ ON CONFLICT (org_id) DO UPDATE SET
     base_url = excluded.base_url, api_key_enc = excluded.api_key_enc, model = excluded.model,
     verified_at = now(), updated_by = excluded.updated_by, updated_at = now();
 
--- name: DeleteOrgAI :exec
+-- name: DeleteOrgAI :execrows
 DELETE FROM org_ai_settings WHERE org_id = $1;
 
 -- name: UpsertRunInsight :exec
@@ -492,6 +495,24 @@ DELETE FROM mcp_audit WHERE created_at < now() - interval '90 days';
 
 -- name: InsertMCPAudit :exec
 INSERT INTO mcp_audit (user_id, grant_id, tool, status) VALUES ($1, $2, $3, $4);
+
+-- Organization audit log -----------------------------------------------------
+
+-- name: InsertOrgAuditEvent :exec
+INSERT INTO org_audit_events (org_id, actor_id, actor_name, actor_email, source,
+    action, category, outcome, resource_type, resource_id, resource_name, detail)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);
+
+-- name: ListOrgAuditEvents :many
+SELECT * FROM org_audit_events
+WHERE org_id = @org_id AND id < @before_id
+  AND (@category::text = '' OR category = @category)
+  AND (@outcome::text = '' OR outcome = @outcome)
+  AND (@source::text = '' OR source = @source)
+  AND (@search::text = '' OR strpos(lower(concat_ws(' ', actor_id, actor_name, actor_email,
+        resource_id::text, resource_name, replace(action, '.', ' '))), lower(@search)) > 0)
+ORDER BY id DESC
+LIMIT @page_limit;
 
 -- name: ListMCPOrgsForUser :many
 SELECT o.id, o.slug, o.name, o.personal, m.role, m.can_configure, m.can_deploy

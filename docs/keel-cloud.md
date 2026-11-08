@@ -53,7 +53,8 @@ invite people. Within an organization:
 
 | Capability | owner | admin | member |
 |---|---|---|---|
-| View everything | ✓ | ✓ | ✓ |
+| View repositories, targets, runs, and logs | ✓ | ✓ | ✓ |
+| View the organization audit log | ✓ | ✓ | — |
 | Deploy / cancel runs | ✓ | ✓ | with **deploy** scope |
 | Create targets, edit variables | ✓ | ✓ | with **configure** scope |
 | Connect repositories, repo settings | ✓ | ✓ | — |
@@ -64,6 +65,27 @@ invite people. Within an organization:
 The organization always keeps at least one owner. Members without scopes
 are read-only viewers. Invites are single-use links valid for 14 days,
 created on the Members page and shared out-of-band.
+
+## Audit log
+
+Owners and admins can open **Audit log** in the organization navigation to
+see who accessed or changed the organization, which resource they acted on,
+when it happened (UTC), and the outcome. Search by actor or resource and
+filter by category, source, and outcome. Select **Older events** to continue
+with the same filters.
+
+The log covers organization activity in the browser and through MCP, as
+well as repository syncs and deployments triggered by GitHub pushes. It
+records access to run logs, membership and settings changes, and failed or
+denied actions by authenticated organization members. Automatic table
+refreshes and account activity such as signing in are outside its scope.
+Entries can include variable names, but never values, credentials, invite
+links, or run log content.
+
+Recording starts after the upgrade; there is no backfill or automatic
+expiry. Renaming or removing people and resources does not erase their
+history. Deleting an organization removes portal access to its history.
+Those records remain in PostgreSQL and are included in database backups.
 
 ## Connecting repositories
 

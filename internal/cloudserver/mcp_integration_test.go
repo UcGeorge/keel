@@ -30,19 +30,24 @@ func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(r)
 }
 
-type mcpFixture struct {
-	t                             *testing.T
-	s                             *Server
-	http                          *httptest.Server
-	owner                         *browser
-	clientID, redirect, org, csrf string
-	seen                          map[string]bool
+type portalFixture struct {
+	t         *testing.T
+	s         *Server
+	http      *httptest.Server
+	owner     *browser
+	org, csrf string
 }
 
-func newMCPFixture(t *testing.T) *mcpFixture {
+type mcpFixture struct {
+	*portalFixture
+	clientID, redirect string
+	seen               map[string]bool
+}
+
+func newPortalFixture(t *testing.T) *portalFixture {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("MCP integration requires PostgreSQL")
+		t.Skip("portal integration requires PostgreSQL")
 	}
 	if os.Getenv("KEEL_TEST_DATABASE_URL") == "" && !dockerOK() {
 		t.Skip("Docker or KEEL_TEST_DATABASE_URL required")
@@ -58,7 +63,7 @@ func newMCPFixture(t *testing.T) *mcpFixture {
 	h.Config.Handler = s.Handler()
 	h.Start()
 	t.Cleanup(h.Close)
-	f := &mcpFixture{t: t, s: s, http: h, owner: newBrowser(t, h), redirect: "http://127.0.0.1:9876/callback", seen: map[string]bool{}}
+	f := &portalFixture{t: t, s: s, http: h, owner: newBrowser(t, h)}
 	suffix := uuid.NewString()[:8]
 	f.org = "mcpowner-" + suffix
 	csrf := f.owner.csrf("/signup")
@@ -66,6 +71,12 @@ func newMCPFixture(t *testing.T) *mcpFixture {
 		t.Fatalf("signup: %d %s", status, body)
 	}
 	f.csrf = f.owner.csrf("/account")
+	return f
+}
+
+func newMCPFixture(t *testing.T) *mcpFixture {
+	t.Helper()
+	f := &mcpFixture{portalFixture: newPortalFixture(t), redirect: "http://127.0.0.1:9876/callback", seen: map[string]bool{}}
 	resp, body := f.request("POST", "/oauth/register", "", `{"client_name":"MCP integration agent","redirect_uris":["`+f.redirect+`"],"token_endpoint_auth_method":"none"}`, "application/json", nil)
 	if resp.StatusCode != 201 {
 		t.Fatalf("register: %d %s", resp.StatusCode, body)
