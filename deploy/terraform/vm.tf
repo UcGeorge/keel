@@ -77,6 +77,9 @@ resource "google_compute_instance" "keel" {
   }
 
   lifecycle {
+    # Image families advance independently of application releases. Keep the
+    # existing boot image on updates; deliberate replacements use the latest.
+    ignore_changes       = [boot_disk[0].initialize_params[0].image]
     replace_triggered_by = [terraform_data.vm_config]
   }
 

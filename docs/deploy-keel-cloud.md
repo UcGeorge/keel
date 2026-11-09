@@ -52,7 +52,9 @@ Key choices:
   checkouts, and TLS certificates live on `/mnt/keel-data`. The VM is
   *deliberately disposable*: when the server configuration (cloud-init)
   changes, Terraform replaces the whole VM (~2 minutes of downtime) while
-  the disk and static IP survive. No configuration drift.
+  the disk and static IP survive. An Ubuntu image-family update alone
+  leaves the existing VM in place; deliberate VM replacements use the
+  current image.
 - **Images are built remotely on Cloud Build**, because Keel's own
   deployment steps run in a container without a Docker daemon. The free
   tier comfortably covers this usage.
@@ -125,6 +127,10 @@ touching anything.
 
 - **Logs / status on the server:** `sudo docker logs keel-cloud`,
   `sudo docker ps`, `systemctl list-timers keel-*`.
+- **First-boot readiness:** rollout waits up to 10 minutes for
+  `cloud-init status --wait --long`, then checks that the secrets file and
+  data mount are ready. If this fails, inspect `sudo cloud-init status --long`
+  and `/var/log/cloud-init-output.log` before retrying.
 - **Resize disks:** raise `BOOT_DISK_GB` / `DATA_DISK_GB` and deploy, then
   grow the filesystem (`sudo resize2fs /dev/disk/by-id/google-keel-data`
   for the data disk).

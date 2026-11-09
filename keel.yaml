@@ -404,6 +404,16 @@ deployments:
             fi
             sleep 10
           done
+          # SSH starts before cloud-init finishes installing packages, mounting
+          # the data disk, and fetching secrets. Wait for that setup before
+          # touching Compose or image.env, including on a replacement VM.
+          echo "Waiting for the server's first-boot setup to finish…"
+          if ! gcloud compute ssh keel-cloud --zone "$GCP_ZONE" --tunnel-through-iap \
+            --quiet --command "sudo timeout 600 cloud-init status --wait --long && sudo test -s /opt/keel/secrets.env && mountpoint -q /mnt/keel-data"; then
+            echo "Server setup did not complete successfully; rollout was not started." >&2
+            echo "Inspect cloud-init status and /var/log/cloud-init-output.log on the VM." >&2
+            exit 1
+          fi
           gcloud compute ssh keel-cloud --zone "$GCP_ZONE" --tunnel-through-iap \
             --quiet --command "sudo /opt/keel/rollout.sh '$IMAGE'"
 
